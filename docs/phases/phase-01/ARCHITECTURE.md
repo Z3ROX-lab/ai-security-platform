@@ -49,14 +49,16 @@ flowchart TB
     ARGO_CTRL -->|Watch| REPO
     REPO -->|GitOps Sync| ARGO_CTRL
     
-    %% Styling
-    classDef control fill:#f9f,stroke:#333,stroke-width:2px
-    classDef worker fill:#bbf,stroke:#333,stroke-width:2px
-    classDef argocd fill:#f96,stroke:#333,stroke-width:2px
+    %% Styling - High Contrast
+    classDef control fill:#1e3a5f,stroke:#fff,stroke-width:2px,color:#fff
+    classDef worker fill:#2d5a3d,stroke:#fff,stroke-width:2px,color:#fff
+    classDef argocd fill:#8b4513,stroke:#fff,stroke-width:2px,color:#fff
+    classDef external fill:#4a4a4a,stroke:#fff,stroke-width:2px,color:#fff
     
     class API,SCHED,CTRL,ETCD control
     class AGENT0,AGENT1 worker
     class ARGO_SERVER,ARGO_REPO,ARGO_CTRL argocd
+    class REPO,VSCODE,BROWSER external
 ```
 
 ## Component Details
@@ -73,7 +75,7 @@ flowchart TB
 ```mermaid
 flowchart LR
     subgraph EXTERNAL["External Access"]
-        USER[👤 User]
+        USER["👤 User"]
     end
     
     subgraph PORTS["Exposed Ports"]
@@ -84,49 +86,83 @@ flowchart LR
     end
     
     subgraph K3D["K3d Cluster"]
-        LB[Load Balancer]
-        ARGO[ArgoCD UI]
-        REG[Container Registry]
+        LB["Load Balancer"]
+        ARGO["ArgoCD UI"]
+        REG["Container Registry"]
     end
     
     USER --> P80 --> LB
     USER --> P443 --> LB
     USER --> P9090 --> ARGO
     USER --> P5000 --> REG
+    
+    %% Styling
+    classDef user fill:#2563eb,stroke:#fff,stroke-width:2px,color:#fff
+    classDef ports fill:#dc2626,stroke:#fff,stroke-width:2px,color:#fff
+    classDef cluster fill:#059669,stroke:#fff,stroke-width:2px,color:#fff
+    
+    class USER user
+    class P80,P443,P9090,P5000 ports
+    class LB,ARGO,REG cluster
 ```
 
 ## GitOps Flow
 ```mermaid
 sequenceDiagram
-    participant DEV as Developer
-    participant GIT as GitHub
-    participant ARGO as ArgoCD
-    participant K8S as Kubernetes
+    participant DEV as 👤 Developer
+    participant GIT as 📁 GitHub
+    participant ARGO as 🔶 ArgoCD
+    participant K8S as ☸️ Kubernetes
     
-    DEV->>GIT: git push (manifests)
-    GIT-->>ARGO: Webhook/Poll
-    ARGO->>ARGO: Detect changes
-    ARGO->>GIT: Fetch manifests
-    ARGO->>K8S: Apply changes
-    K8S-->>ARGO: Status update
-    ARGO-->>DEV: Sync status (UI)
+    DEV->>GIT: 1. git push (manifests)
+    GIT-->>ARGO: 2. Webhook/Poll
+    ARGO->>ARGO: 3. Detect changes
+    ARGO->>GIT: 4. Fetch manifests
+    ARGO->>K8S: 5. Apply changes
+    K8S-->>ARGO: 6. Status update
+    ARGO-->>DEV: 7. Sync status (UI)
 ```
 
 ## Terraform Resources
 ```mermaid
 flowchart TD
-    TF[Terraform] -->|creates| CLUSTER[k3d_cluster.ai_platform]
+    TF["🔧 Terraform"]
+    CLUSTER["☸️ k3d_cluster.ai_platform"]
     
-    CLUSTER -->|includes| SERVER[1 Server Node]
-    CLUSTER -->|includes| AGENTS[2 Agent Nodes]
-    CLUSTER -->|includes| LB[Load Balancer]
-    CLUSTER -->|includes| REGISTRY[Local Registry]
+    TF -->|creates| CLUSTER
     
-    CLUSTER -->|exposes| PORT80[Port 80]
-    CLUSTER -->|exposes| PORT443[Port 443]
-    CLUSTER -->|exposes| PORT8080[Port 8080]
-    CLUSTER -->|exposes| PORT5000[Port 5000]
+    CLUSTER --> SERVER["🖥️ 1 Server Node"]
+    CLUSTER --> AGENTS["🖥️ 2 Agent Nodes"]
+    CLUSTER --> LB["⚖️ Load Balancer"]
+    CLUSTER --> REGISTRY["📦 Local Registry"]
+    
+    SERVER --> PORT80[":80"]
+    SERVER --> PORT443[":443"]
+    SERVER --> PORT8080[":8080"]
+    REGISTRY --> PORT5000[":5000"]
+    
+    %% Styling
+    classDef terraform fill:#7c3aed,stroke:#fff,stroke-width:2px,color:#fff
+    classDef cluster fill:#0891b2,stroke:#fff,stroke-width:2px,color:#fff
+    classDef resource fill:#0d9488,stroke:#fff,stroke-width:2px,color:#fff
+    classDef port fill:#f59e0b,stroke:#000,stroke-width:2px,color:#000
+    
+    class TF terraform
+    class CLUSTER cluster
+    class SERVER,AGENTS,LB,REGISTRY resource
+    class PORT80,PORT443,PORT8080,PORT5000 port
 ```
+
+## Architecture Legend
+
+| Color | Meaning |
+|-------|---------|
+| 🔵 **Dark Blue** | Control Plane components |
+| 🟢 **Dark Green** | Worker Nodes |
+| 🟤 **Brown** | ArgoCD components |
+| 🟣 **Purple** | Terraform |
+| 🔷 **Cyan** | Cluster resources |
+| 🟡 **Yellow** | Exposed ports |
 
 ## Current State
 
