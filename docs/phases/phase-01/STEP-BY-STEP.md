@@ -345,3 +345,56 @@ kubectl get secrets -n argocd
 # If argocd-initial-admin-secret doesn't exist, ArgoCD may have issues
 kubectl describe deployment argocd-server -n argocd
 ```
+
+---
+
+## Step 8: Connect ArgoCD to GitHub
+
+ArgoCD needs access to your GitHub repository to implement GitOps.
+
+### 8.1 Access ArgoCD Settings
+
+1. Open ArgoCD UI: https://localhost:9090
+2. Click **Settings** (gear icon on the left sidebar)
+3. Click **Repositories**
+4. Click **+ Connect Repo**
+
+### 8.2 Configure Repository Connection
+
+| Field | Value |
+|-------|-------|
+| **Choose your connection method** | VIA HTTPS |
+| **Type** | git |
+| **Project** | default |
+| **Repository URL** | `https://github.com/YOUR_USERNAME/ai-security-platform.git` |
+| **Username** | Your GitHub username |
+| **Password** | Your GitHub Personal Access Token (PAT) |
+
+> ⚠️ **Note**: GitHub no longer accepts passwords for Git operations. You must use a Personal Access Token (PAT). Create one at: https://github.com/settings/tokens
+
+### 8.3 Verify Connection
+
+After clicking **Connect**, you should see:
+```
+✅ Connection Status: Successful
+```
+
+### 8.4 Troubleshooting
+
+**Connection failed?**
+- Verify your PAT has `repo` scope
+- Check the repository URL is correct
+- Ensure the PAT hasn't expired
+
+---
+
+## Step 9: Create Your First ArgoCD Application (Phase 2 preparation)
+
+Once the repository is connected, ArgoCD can deploy applications from Git. This will be configured in Phase 2 when we add our first applications (PostgreSQL, MinIO).
+
+The pattern we'll use:
+```
+GitHub Push → ArgoCD Detects → Kubernetes Deploys
+```
+
+This is the **GitOps** workflow in action!
