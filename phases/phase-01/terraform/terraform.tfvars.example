@@ -1,0 +1,19 @@
+# =============================================================================
+# AI Security Platform - Phase 1: Example Configuration
+# Copy this file to terraform.tfvars and adjust values
+# =============================================================================
+
+cluster_name = "ai-security-platform"
+
+# Cluster sizing (adjust based on RAM)
+# 32GB RAM → servers=1, agents=2 (recommended)
+# 16GB RAM → servers=1, agents=1 (minimal)
+servers = 1
+agents  = 2
+
+# K3s version
+k3s_image = "rancher/k3s:v1.29.0-k3s1"
+
+# Local registry
+registry_name = "registry.localhost"
+registry_port = 5000
