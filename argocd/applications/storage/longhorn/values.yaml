@@ -1,63 +1,15 @@
 # Longhorn values for AI Security Platform (Home Lab)
-# Only our customizations - defaults from official chart
+# Minimal config - let defaults handle most settings
 
-# Reduce resource usage for home lab
+# Default settings for home lab
 defaultSettings:
-  # Storage settings
-  defaultDataPath: /var/lib/longhorn
-  defaultReplicaCount: 1  # Single replica for home lab (no HA needed)
-  
-  # Backup settings (disabled for now, enable in Phase 10)
-  backupTarget: ""
-  backupTargetCredentialSecret: ""
-  
-  # Performance settings for K3d
-  storageMinimalAvailablePercentage: 10
-  storageOverProvisioningPercentage: 100
-  
-  # Garbage collection
-  orphanAutoDeletion: true
+  defaultReplicaCount: "1"
 
-# Resource limits for home lab
-resources:
-  limits:
-    cpu: 500m
-    memory: 512Mi
-  requests:
-    cpu: 100m
-    memory: 128Mi
-
-# Longhorn Manager
-longhornManager:
-  priorityClass: ~
-  tolerations: []
-  nodeSelector: {}
-
-# Longhorn Driver
-longhornDriver:
-  priorityClass: ~
-  tolerations: []
-  nodeSelector: {}
-
-# Longhorn UI
-longhornUI:
-  replicas: 1
-  priorityClass: ~
-
-# Default StorageClass
+# Reduce replicas for home lab
 persistence:
-  defaultClass: true
   defaultClassReplicaCount: 1
-  reclaimPolicy: Delete
 
-# Ingress for UI (optional - access via port-forward initially)
-ingress:
-  enabled: false
-  # Enable later if needed:
-  # host: longhorn.local
-  # tls: false
-
-# CSI settings
+# CSI settings - single replica
 csi:
   attacherReplicaCount: 1
   provisionerReplicaCount: 1
