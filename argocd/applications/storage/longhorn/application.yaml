@@ -25,7 +25,7 @@ spec:
         valueFiles:
           - $values/argocd/applications/storage/longhorn/values.yaml
     - repoURL: https://github.com/Z3ROX-lab/ai-security-platform
-      targetRevision: main
+      targetRevision: master
       ref: values
   destination:
     server: https://kubernetes.default.svc

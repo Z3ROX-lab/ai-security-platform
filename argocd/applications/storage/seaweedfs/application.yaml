@@ -19,7 +19,7 @@ spec:
           - $values/argocd/applications/storage/seaweedfs/values.yaml
     # Source 2: Our values from Git
     - repoURL: https://github.com/Z3ROX-lab/ai-security-platform
-      targetRevision: main
+      targetRevision: master
       ref: values
   destination:
     server: https://kubernetes.default.svc
