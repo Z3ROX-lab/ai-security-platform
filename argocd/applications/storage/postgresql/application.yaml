@@ -1,0 +1,29 @@
+# PostgreSQL - Database for Keycloak, MLflow, and other services
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: postgresql
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  sources:
+    # Source 1: Official Bitnami PostgreSQL Helm chart
+    - repoURL: https://charts.bitnami.com/bitnami
+      chart: postgresql
+      targetRevision: 16.2.1
+      helm:
+        valueFiles:
+          - $values/argocd/applications/storage/postgresql/values.yaml
+    # Source 2: Our values from Git
+    - repoURL: https://github.com/Z3ROX-lab/ai-security-platform
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: storage
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+    # Manual sync for database (safety - avoid accidental data loss)

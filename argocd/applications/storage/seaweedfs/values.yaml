@@ -1,0 +1,119 @@
+# SeaweedFS values for AI Security Platform (Home Lab)
+# S3-compatible object storage for ML artifacts, models, datasets
+
+global:
+  # Single-node setup for home lab
+  replicationPlacement: "000"  # No replication
+  enableSecurity: false        # Enable later with mTLS
+
+# Master server - manages volume servers
+master:
+  enabled: true
+  replicas: 1
+  
+  # Resources for home lab
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 50m
+      memory: 128Mi
+  
+  # Persistence
+  persistence:
+    enabled: true
+    size: 1Gi
+    storageClass: longhorn
+  
+  # Configuration
+  config: |
+    [master.maintenance]
+    scripts = """
+    """
+
+# Volume server - stores actual data
+volume:
+  enabled: true
+  replicas: 1
+  
+  # Resources for home lab
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+  
+  # Persistence - where objects are stored
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClass: longhorn
+  
+  # Data directories
+  dataDirs:
+    - name: data
+      type: hdd
+      maxVolumes: 50
+
+# Filer - provides S3 API
+filer:
+  enabled: true
+  replicas: 1
+  
+  # Resources for home lab
+  resources:
+    limits:
+      cpu: 300m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+  
+  # Persistence for filer metadata
+  persistence:
+    enabled: true
+    size: 2Gi
+    storageClass: longhorn
+  
+  # S3 API configuration
+  s3:
+    enabled: true
+    port: 8333
+    # Enable authentication
+    enableAuth: true
+    # Create default buckets
+    # Buckets will be created manually or via init job
+
+# S3 Gateway service
+s3:
+  enabled: true
+  replicas: 1
+  
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 50m
+      memory: 128Mi
+  
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 8333
+
+# Disable components not needed for home lab
+cronjob:
+  enabled: false
+
+# Service configuration
+service:
+  master:
+    type: ClusterIP
+  volume:
+    type: ClusterIP
+  filer:
+    type: ClusterIP

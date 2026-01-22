@@ -1,0 +1,44 @@
+# Root Application - App-of-Apps Pattern
+# Cette application surveille le dossier argocd/applications/
+# et déploie automatiquement tout ce qu'elle y trouve
+#
+# C'est la SEULE application à créer manuellement.
+# Toutes les autres seront détectées et déployées automatiquement.
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root-app
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  
+  source:
+    # Notre repository Git
+    repoURL: https://github.com/Z3ROX-lab/ai-security-platform
+    targetRevision: main
+    
+    # Surveille ce dossier (et tous ses sous-dossiers)
+    path: argocd/applications
+    
+    # Inclure les sous-dossiers récursivement
+    directory:
+      recurse: true
+      include: '*.yaml'
+  
+  destination:
+    # Les Applications ArgoCD sont créées dans le namespace argocd
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  
+  syncPolicy:
+    automated:
+      # Supprimer les ressources qui ne sont plus dans Git
+      prune: true
+      # Corriger si quelqu'un modifie manuellement le cluster
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+
