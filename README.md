@@ -33,7 +33,7 @@ Enterprise-grade AI/ML platform with comprehensive security coverage, built on K
 | Phase | Name | Status |
 |-------|------|--------|
 | 1 | Infrastructure & GitOps |  Done |
-| 2 | Storage Layer | 🔄 Not started |
+| 2 | Storage Layer | 🔄 In Progress |
 | 3 | IAM & Zero Trust (Keycloak) | 🔲 Not started |
 | 4 | K8s Security Baseline | 🔲 Not started |
 | 5 | AI Inference (Ollama/vLLM) | 🔲 Not started |
