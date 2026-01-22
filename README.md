@@ -11,8 +11,6 @@ Enterprise-grade AI/ML platform with comprehensive security coverage, built on K
 ## 👤 Author
 
 **Stéphane (Z3ROX)** - Lead SecOps/Cloud Security Architect
-- 20+ years experience in telecommunications and cloud infrastructure
-- CCSP, AWS Solutions Architect, ISO 27001 Lead Implementer, CompTIA Security+
 
 ## 🏗️ Architecture Overview
 ```
