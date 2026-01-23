@@ -1,21 +1,29 @@
 # PostgreSQL values for AI Security Platform (Home Lab)
-# Database backend for Keycloak, MLflow, and other services
+# Bitnami Helm chart with official PostgreSQL image
+
+# Allow non-Bitnami images
+global:
+  security:
+    allowInsecureImages: true
+  storageClass: local-path
+
+# Override image to use official PostgreSQL
+image:
+  registry: docker.io
+  repository: postgres
+  tag: "16-alpine"
+  pullPolicy: IfNotPresent
 
 # Authentication
 auth:
-  # Use existing secret for passwords (create with Sealed Secrets)
-  # For initial setup, we'll use these defaults (change in production!)
   postgresPassword: "postgres-admin-password"  # TODO: Use Sealed Secret
   username: "appuser"
   password: "appuser-password"                  # TODO: Use Sealed Secret
   database: "appdb"
-  
-  # Enable password authentication
   enablePostgresUser: true
 
 # Primary server configuration
 primary:
-  # Resources for home lab
   resources:
     limits:
       cpu: 500m
@@ -24,36 +32,11 @@ primary:
       cpu: 100m
       memory: 256Mi
   
-  # Persistence - using local-path (K3d default)
   persistence:
     enabled: true
     size: 5Gi
     storageClass: local-path
-  
-  # PostgreSQL configuration
-  configuration: |
-    # Connection settings
-    max_connections = 100
-    
-    # Memory settings (tuned for 512Mi limit)
-    shared_buffers = 128MB
-    effective_cache_size = 256MB
-    work_mem = 4MB
-    maintenance_work_mem = 64MB
-    
-    # WAL settings
-    wal_buffers = 4MB
-    min_wal_size = 80MB
-    max_wal_size = 1GB
-    
-    # Query tuning
-    random_page_cost = 1.1
-    effective_io_concurrency = 200
-    
-    # Logging (useful for debugging)
-    log_statement = 'ddl'
-    log_min_duration_statement = 1000
-  
+
   # Init scripts - create databases for services
   initdb:
     scripts:
@@ -75,35 +58,16 @@ primary:
         \c mlflow
         GRANT ALL ON SCHEMA public TO mlflow;
 
-# Disable read replicas for home lab (single instance)
+# Disable read replicas for home lab
 readReplicas:
   replicaCount: 0
 
-# Metrics (enable for Phase 10 - Observability)
+# Disable metrics for now
 metrics:
   enabled: false
-
-# Backup configuration (enable for Phase 10)
-backup:
-  enabled: false
-
-# Network policy
-networkPolicy:
-  enabled: false  # Enable in Phase 4 (K8s Security Baseline)
 
 # Service configuration
 service:
   type: ClusterIP
   ports:
     postgresql: 5432
-
-# Pod security
-containerSecurityContext:
-  enabled: true
-  runAsUser: 1001
-  runAsNonRoot: true
-  allowPrivilegeEscalation: false
-
-# Volume permissions
-volumePermissions:
-  enabled: true
