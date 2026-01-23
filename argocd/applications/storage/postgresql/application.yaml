@@ -13,7 +13,7 @@ spec:
     # Source 1: Official CNPG cluster Helm chart
     - repoURL: https://cloudnative-pg.github.io/charts
       chart: cluster
-      targetRevision: 0.5.0
+      targetRevision: 0.4.0
       helm:
         valueFiles:
           - $values/argocd/applications/storage/postgresql/values.yaml
