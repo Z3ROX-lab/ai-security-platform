@@ -11,6 +11,10 @@ terraform {
       source  = "pvotal-tech/k3d"
       version = "~> 0.0.7"
     }
+    null = {
+      source  = "hashicorp/null"
+      version = "~> 3.2"
+    }
   }
 }
 
@@ -19,12 +23,25 @@ terraform {
 # -----------------------------------------------------------------------------
 
 provider "k3d" {}
+provider "null" {}
+
+# -----------------------------------------------------------------------------
+# Local Setup for Longhorn
+# -----------------------------------------------------------------------------
+
+resource "null_resource" "longhorn_directory" {
+  provisioner "local-exec" {
+    command = "mkdir -p /tmp/k3d-longhorn"
+  }
+}
 
 # -----------------------------------------------------------------------------
 # K3d Cluster
 # -----------------------------------------------------------------------------
 
 resource "k3d_cluster" "ai_platform" {
+  depends_on = [null_resource.longhorn_directory]
+
   name    = var.cluster_name
   servers = var.servers
   agents  = var.agents
@@ -54,6 +71,16 @@ resource "k3d_cluster" "ai_platform" {
     host_port      = 8080
     container_port = 8080
     node_filters   = ["loadbalancer"]
+  }
+
+  # ---------------------------------------------------------------------------
+  # Volumes for Longhorn Storage
+  # ---------------------------------------------------------------------------
+
+  volume {
+    source      = "/tmp/k3d-longhorn"
+    destination = "/var/lib/longhorn"
+    node_filters = ["server:*", "agent:*"]
   }
 
   # ---------------------------------------------------------------------------
