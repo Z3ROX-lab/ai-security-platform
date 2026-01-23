@@ -84,7 +84,8 @@ resource "null_resource" "argocd_root_app" {
       sleep 10
       
       # Apply root-app from the repository
-      kubectl apply -f ${path.module}/../../../argocd/applications/root-app.yaml
+      # Note: root-app.yaml is outside applications/ to avoid self-detection
+      kubectl apply -f ${path.module}/../../../argocd/root-app.yaml
       
       echo "Root-app deployed! ArgoCD will now manage all applications in argocd/applications/"
     EOT
