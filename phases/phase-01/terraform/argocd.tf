@@ -64,3 +64,29 @@ resource "null_resource" "argocd_password" {
     EOT
   }
 }
+
+# -----------------------------------------------------------------------------
+# Deploy Root App (App-of-Apps pattern)
+# -----------------------------------------------------------------------------
+
+resource "null_resource" "argocd_root_app" {
+  depends_on = [null_resource.argocd_password]
+
+  triggers = {
+    cluster_name = var.cluster_name
+  }
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      echo "Deploying ArgoCD root-app..."
+      
+      # Wait a bit for ArgoCD to be fully ready
+      sleep 10
+      
+      # Apply root-app from the repository
+      kubectl apply -f ${path.module}/../../../argocd/applications/root-app.yaml
+      
+      echo "Root-app deployed! ArgoCD will now manage all applications in argocd/applications/"
+    EOT
+  }
+}

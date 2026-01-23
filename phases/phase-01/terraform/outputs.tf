@@ -57,7 +57,7 @@ output "next_steps" {
   description = "Next steps after cluster creation"
   value       = <<-EOT
     
-    ✅ Cluster and ArgoCD installed successfully!
+    ✅ Cluster, ArgoCD, and root-app installed successfully!
     
     Storage: local-path (K3d default)
     Note: Longhorn not available on WSL2/Docker Desktop (shared mount limitation)
@@ -66,9 +66,10 @@ output "next_steps" {
     1. Verify cluster: kubectl get nodes
     2. Verify storage: kubectl get storageclass
     3. Verify ArgoCD: kubectl get pods -n argocd
-    4. Port-forward ArgoCD: kubectl port-forward svc/argocd-server -n argocd 9090:443
-    5. Open ArgoCD UI: https://localhost:9090
-    6. Apply root-app: kubectl apply -f argocd/applications/root-app.yaml
+    4. Verify apps: kubectl get applications -n argocd
+    5. Port-forward ArgoCD: kubectl port-forward svc/argocd-server -n argocd 9090:443
+    6. Open ArgoCD UI: https://localhost:9090
+    7. Sync applications in ArgoCD UI
     
   EOT
 }
