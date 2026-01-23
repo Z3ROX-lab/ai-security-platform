@@ -34,11 +34,11 @@ spec:
     namespace: argocd
   
   syncPolicy:
-    automated:
+    #automated:
       # Supprimer les ressources qui ne sont plus dans Git
-      prune: true
+    #  prune: true
       # Corriger si quelqu'un modifie manuellement le cluster
-      selfHeal: true
+    #  selfHeal: true
     syncOptions:
       - CreateNamespace=true
 
