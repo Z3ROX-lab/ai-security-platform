@@ -2,42 +2,43 @@
 # Chart: https://cloudnative-pg.github.io/charts/cluster
 # Uses CloudNativePG operator (CNCF project)
 
-# Cluster name
-name: postgresql
+# Cluster name override
+fullnameOverride: "postgresql-cluster"
 
-# Single instance for home lab (no HA)
-instances: 1
+# Mode: standalone (not replica or recovery)
+mode: standalone
 
-# Image - official CloudNativePG PostgreSQL
-imageName: ghcr.io/cloudnative-pg/postgresql:16
+cluster:
+  # Number of instances - single for home lab
+  instances: 1
 
-# Storage configuration
-storage:
-  size: 5Gi
-  storageClass: local-path
+  # Storage configuration
+  storage:
+    size: 5Gi
+    storageClass: local-path
 
-# Resources for home lab
-resources:
-  requests:
-    cpu: 100m
-    memory: 256Mi
-  limits:
-    cpu: 500m
-    memory: 512Mi
+  # Resources for home lab
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
 
-# Bootstrap configuration - create initial databases
-bootstrap:
+  # Bootstrap configuration - create initial databases
   initdb:
     database: appdb
     owner: appuser
     postInitSQL:
-      - CREATE DATABASE keycloak
-      - CREATE DATABASE mlflow
+      - CREATE DATABASE keycloak;
+      - CREATE DATABASE mlflow;
+      - CREATE DATABASE openwebui;
 
-# Monitoring (disable for now, enable in Phase 10)
-monitoring:
+  # Monitoring (disable for now)
+  monitoring:
+    enabled: false
+
+# Backups disabled for home lab
+backups:
   enabled: false
-
-# Fix for CNPG validation - must be array, not null
-cluster:
-  externalClusters: []
