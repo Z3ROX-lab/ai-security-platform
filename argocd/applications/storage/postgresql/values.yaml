@@ -37,3 +37,7 @@ bootstrap:
 # Monitoring (disable for now, enable in Phase 10)
 monitoring:
   enabled: false
+
+# Fix for CNPG validation - must be array, not null
+cluster:
+  externalClusters: []
