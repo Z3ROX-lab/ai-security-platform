@@ -1,6 +1,10 @@
 # Longhorn values for AI Security Platform (Home Lab)
 # Minimal config - let defaults handle most settings
 
+# Disable pre-upgrade hook (causes issues on fresh install)
+preUpgradeChecker:
+  jobEnabled: false
+  
 # Default settings for home lab
 defaultSettings:
   defaultReplicaCount: "1"
