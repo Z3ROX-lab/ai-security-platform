@@ -2,16 +2,18 @@
 # Bitnami Helm chart with official SeaweedFS image
 # S3-compatible object storage for ML artifacts, models, datasets
 
+# Allow non-Bitnami images (required for official SeaweedFS image)
+global:
+  security:
+    allowInsecureImages: true
+  storageClass: local-path
+
 # Override images to use official SeaweedFS (Bitnami images not available)
 image:
   registry: docker.io
   repository: chrislusf/seaweedfs
   tag: "3.77"
   pullPolicy: IfNotPresent
-
-# Global settings
-global:
-  storageClass: local-path
 
 # Master server - manages volume servers
 master:
