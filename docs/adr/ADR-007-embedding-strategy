@@ -1,0 +1,477 @@
+# ADR-007: Embedding Strategy
+
+## Status
+**Accepted**
+
+## Date
+2025-01-21
+
+## Context
+
+The AI Security Platform requires an embedding strategy for the RAG (Retrieval-Augmented Generation) pipeline. Embeddings convert text into numerical vectors that capture semantic meaning, enabling similarity search in the vector database.
+
+### What are Embeddings?
+
+```
+Text: "How to configure Kubernetes network policies"
+                    │
+                    ▼
+           Embedding Model
+                    │
+                    ▼
+Vector: [0.23, -0.45, 0.12, 0.87, -0.33, ...] (384-1536 dimensions)
+```
+
+Similar texts produce similar vectors, enabling semantic search beyond keyword matching.
+
+### Requirements
+
+| Requirement | Priority | Notes |
+|-------------|----------|-------|
+| Run locally | Must have | Data sovereignty, no external API calls |
+| Low memory footprint | Must have | RAM needed for LLM (~8-10GB) |
+| Good quality for technical docs | Must have | Code, K8s, security content |
+| Fast inference | Should have | Real-time query embedding |
+| Batch processing capable | Should have | Document ingestion |
+| Multilingual | Nice to have | French + English |
+| Open source | Must have | No vendor lock-in |
+
+---
+
+## Options Considered
+
+### Option 1: all-MiniLM-L6-v2 (Sentence Transformers)
+
+| Aspect | Details |
+|--------|---------|
+| **Provider** | Hugging Face / Sentence Transformers |
+| **Dimensions** | 384 |
+| **Size** | 80MB |
+| **License** | Apache 2.0 |
+
+#### Pros
+- ✅ Extremely lightweight (80MB)
+- ✅ Fast inference (~14ms/sentence on CPU)
+- ✅ Good quality for general text
+- ✅ Well-documented, widely used
+- ✅ Easy to deploy (ONNX, TorchScript)
+
+#### Cons
+- ⚠️ English-only (not ideal for French)
+- ⚠️ Lower quality than larger models
+- ⚠️ 384 dimensions (less expressive than 768+)
+
+---
+
+### Option 2: all-mpnet-base-v2 (Sentence Transformers)
+
+| Aspect | Details |
+|--------|---------|
+| **Provider** | Hugging Face / Sentence Transformers |
+| **Dimensions** | 768 |
+| **Size** | 420MB |
+| **License** | Apache 2.0 |
+
+#### Pros
+- ✅ Better quality than MiniLM
+- ✅ 768 dimensions (more expressive)
+- ✅ Good balance quality/size
+
+#### Cons
+- ⚠️ 5x larger than MiniLM
+- ⚠️ Slower inference (~50ms/sentence)
+- ⚠️ English-only
+
+---
+
+### Option 3: e5-base-v2 / e5-large-v2 (Microsoft)
+
+| Aspect | e5-base-v2 | e5-large-v2 |
+|--------|------------|-------------|
+| **Dimensions** | 768 | 1024 |
+| **Size** | 420MB | 1.3GB |
+| **License** | MIT |
+
+#### Pros
+- ✅ State-of-the-art quality
+- ✅ Trained for retrieval (RAG-optimized)
+- ✅ Instruction-following capability
+
+#### Cons
+- ❌ e5-large too heavy for home lab
+- ⚠️ English-focused
+
+---
+
+### Option 4: multilingual-e5-base (Microsoft)
+
+| Aspect | Details |
+|--------|---------|
+| **Provider** | Microsoft |
+| **Dimensions** | 768 |
+| **Size** | 1.1GB |
+| **Languages** | 100+ including French |
+| **License** | MIT |
+
+#### Pros
+- ✅ Excellent multilingual support
+- ✅ Good quality across languages
+- ✅ RAG-optimized
+
+#### Cons
+- ⚠️ 1.1GB (heavy for home lab)
+- ⚠️ Slower than English-only models
+
+---
+
+### Option 5: nomic-embed-text (Nomic AI)
+
+| Aspect | Details |
+|--------|---------|
+| **Provider** | Nomic AI |
+| **Dimensions** | 768 |
+| **Size** | 550MB |
+| **Context** | 8192 tokens |
+| **License** | Apache 2.0 |
+
+#### Pros
+- ✅ Long context (8192 vs 512 tokens)
+- ✅ Good quality
+- ✅ Open source with open training data
+
+#### Cons
+- ⚠️ Newer, less battle-tested
+- ⚠️ English-focused
+
+---
+
+### Option 6: OpenAI text-embedding-3-small/large
+
+| Aspect | small | large |
+|--------|-------|-------|
+| **Dimensions** | 1536 | 3072 |
+| **Cost** | $0.02/1M tokens | $0.13/1M tokens |
+
+#### Pros
+- ✅ Excellent quality
+- ✅ No local resources needed
+
+#### Cons
+- ❌ **API calls = data leaves our infrastructure**
+- ❌ Cost scales with usage
+- ❌ Latency (network round-trip)
+- ❌ Vendor lock-in
+
+**Rejected**: Violates data sovereignty requirement.
+
+---
+
+## Decision
+
+**Primary: all-MiniLM-L6-v2** for Phase 6 (MVP)
+**Upgrade path: e5-base-v2** when more RAM available
+
+### Decision Matrix
+
+| Criteria | Weight | MiniLM-L6 | mpnet-base | e5-base | multilingual-e5 | nomic |
+|----------|--------|-----------|------------|---------|-----------------|-------|
+| Memory footprint | 30% | ⭐⭐⭐ | ⭐⭐ | ⭐⭐ | ⭐ | ⭐⭐ |
+| Quality | 25% | ⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐ |
+| Speed | 20% | ⭐⭐⭐ | ⭐⭐ | ⭐⭐ | ⭐⭐ | ⭐⭐ |
+| Ease of deployment | 15% | ⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐ | ⭐⭐ |
+| Multilingual | 10% | ⭐ | ⭐ | ⭐ | ⭐⭐⭐ | ⭐ |
+| **Total** | | **2.55** | 2.35 | 2.45 | 2.15 | 2.25 |
+
+### Why MiniLM Wins for MVP
+
+1. **Memory**: 80MB leaves maximum RAM for Ollama (8-10GB)
+2. **Speed**: 14ms/query = real-time UX
+3. **Good enough**: For technical English docs, quality is sufficient
+4. **Easy upgrade**: Same API, just swap model later
+
+---
+
+## Architecture
+
+### Embedding Service Deployment
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                 Namespace: ai-inference                          │
+│                                                                  │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │              Embedding Service (FastAPI)                    │ │
+│  │                                                             │ │
+│  │  ┌─────────────────┐    ┌─────────────────┐               │ │
+│  │  │  Sentence       │    │    REST API     │               │ │
+│  │  │  Transformers   │    │                 │               │ │
+│  │  │                 │    │  POST /embed    │               │ │
+│  │  │  all-MiniLM-    │◄───│  POST /embed/   │               │ │
+│  │  │  L6-v2          │    │       batch     │               │ │
+│  │  │                 │    │  GET /health    │               │ │
+│  │  └─────────────────┘    └─────────────────┘               │ │
+│  │                                                             │ │
+│  │  Resources:                                                 │ │
+│  │  • CPU: 500m-1000m                                         │ │
+│  │  • RAM: 256Mi-512Mi                                        │ │
+│  │  • Port: 8080                                              │ │
+│  │                                                             │ │
+│  └────────────────────────────────────────────────────────────┘ │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Integration with RAG Pipeline
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│                           RAG PIPELINE                                    │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                           │
+│  INGESTION (Batch)                                                        │
+│  ════════════════                                                         │
+│                                                                           │
+│  Documents ──▶ Chunking ──▶ Embedding Service ──▶ Qdrant                 │
+│                  │              │                    │                    │
+│                  │              │                    │                    │
+│              512 tokens     [384 dims]          Store with               │
+│              50 overlap     ~14ms/chunk         metadata                  │
+│                                                                           │
+│  QUERY (Real-time)                                                        │
+│  ═════════════════                                                        │
+│                                                                           │
+│  User Query ──▶ Embedding Service ──▶ Qdrant Search ──▶ Top K chunks     │
+│                      │                     │                │             │
+│                      │                     │                │             │
+│                  [384 dims]           Cosine            Context           │
+│                  ~14ms               similarity          for LLM          │
+│                                                                           │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Chunking Strategy
+
+### Parameters
+
+| Parameter | Value | Rationale |
+|-----------|-------|-----------|
+| **Chunk size** | 512 tokens | MiniLM max context, good granularity |
+| **Overlap** | 50 tokens (~10%) | Preserve context at boundaries |
+| **Separator** | `\n\n`, `\n`, `. `, ` ` | Respect paragraph/sentence structure |
+
+### Why These Values
+
+```
+Document: 5000 tokens
+                    │
+                    ▼
+           Chunking (512 tokens, 50 overlap)
+                    │
+                    ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  Chunk 1: tokens 0-512                                          │
+│  Chunk 2: tokens 462-974     (50 token overlap with chunk 1)   │
+│  Chunk 3: tokens 924-1436    (50 token overlap with chunk 2)   │
+│  ...                                                            │
+│  Chunk N: remaining tokens                                      │
+└─────────────────────────────────────────────────────────────────┘
+
+Total chunks: ~11 chunks (with overlap)
+```
+
+### Chunking by Document Type
+
+| Document Type | Strategy | Notes |
+|---------------|----------|-------|
+| **Markdown** | Split by headers first | Preserve structure |
+| **Code** | Split by function/class | Keep logical units |
+| **PDF** | Split by paragraph | Respect layout |
+| **HTML** | Strip tags, split by section | Clean content first |
+
+---
+
+## Implementation
+
+### Embedding Service (Python/FastAPI)
+
+```python
+# Dockerfile structure
+FROM python:3.11-slim
+
+# Install dependencies
+RUN pip install sentence-transformers fastapi uvicorn
+
+# Download model at build time (not runtime)
+RUN python -c "from sentence_transformers import SentenceTransformer; \
+               SentenceTransformer('all-MiniLM-L6-v2')"
+
+# API endpoints
+# POST /embed         - Single text embedding
+# POST /embed/batch   - Batch embedding
+# GET  /health        - Health check
+# GET  /info          - Model info (dimensions, max tokens)
+```
+
+### ArgoCD Application
+
+```yaml
+# argocd/applications/ai/embedding-service.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: embedding-service
+  namespace: argocd
+spec:
+  project: ai
+  source:
+    repoURL: https://github.com/Z3ROX-lab/ai-security-platform
+    targetRevision: main
+    path: apps/ai/embedding-service
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ai-inference
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+```
+
+### Resource Requirements
+
+| Model | RAM (loaded) | RAM (inference) | CPU |
+|-------|--------------|-----------------|-----|
+| all-MiniLM-L6-v2 | ~150MB | ~256MB peak | 0.5-1 core |
+| e5-base-v2 | ~500MB | ~700MB peak | 1-2 cores |
+
+---
+
+## API Specification
+
+### Single Embedding
+
+```bash
+POST /embed
+Content-Type: application/json
+
+{
+  "text": "How to configure Kubernetes network policies",
+  "normalize": true
+}
+
+Response:
+{
+  "embedding": [0.23, -0.45, 0.12, ...],  # 384 dimensions
+  "dimensions": 384,
+  "model": "all-MiniLM-L6-v2",
+  "tokens": 8
+}
+```
+
+### Batch Embedding
+
+```bash
+POST /embed/batch
+Content-Type: application/json
+
+{
+  "texts": [
+    "First document chunk",
+    "Second document chunk",
+    "Third document chunk"
+  ],
+  "normalize": true
+}
+
+Response:
+{
+  "embeddings": [
+    [0.23, -0.45, ...],
+    [0.18, -0.52, ...],
+    [0.31, -0.41, ...]
+  ],
+  "dimensions": 384,
+  "model": "all-MiniLM-L6-v2",
+  "count": 3
+}
+```
+
+---
+
+## Performance Benchmarks
+
+### Expected Performance (CPU only)
+
+| Operation | MiniLM-L6 | e5-base | Notes |
+|-----------|-----------|---------|-------|
+| Single query | ~14ms | ~50ms | Real-time acceptable |
+| Batch 100 docs | ~800ms | ~3s | Ingestion |
+| Batch 1000 docs | ~7s | ~28s | Bulk ingestion |
+
+### Optimization Tips
+
+1. **Batch processing**: Always batch during ingestion (10-100 texts/call)
+2. **ONNX runtime**: 2x faster than PyTorch for inference
+3. **Quantization**: INT8 reduces size 4x with minimal quality loss
+4. **Caching**: Cache embeddings for frequently queried content
+
+---
+
+## Upgrade Path
+
+### Phase 6 (MVP)
+```
+all-MiniLM-L6-v2 (80MB, 384 dims)
+└── Good enough for English technical docs
+└── Maximum RAM for Ollama
+```
+
+### Phase 7+ (If needed)
+```
+e5-base-v2 (420MB, 768 dims)
+└── Better retrieval quality
+└── When more RAM available or smaller LLM
+```
+
+### Enterprise Migration
+```
+multilingual-e5-large or OpenAI (via Azure private endpoint)
+└── When data sovereignty allows
+└── Or self-hosted on GPU nodes
+```
+
+---
+
+## Consequences
+
+### Positive
+- Minimal memory footprint (80MB)
+- Fast inference for real-time queries
+- Simple deployment (single container)
+- Easy upgrade path (same API)
+- No external API dependencies
+
+### Negative
+- English-only (French support limited)
+- Lower quality than larger models
+- 384 dimensions less expressive than 768+
+
+### Risks and Mitigations
+
+| Risk | Mitigation |
+|------|------------|
+| Quality insufficient | Upgrade to e5-base-v2 (same API) |
+| French content | Add multilingual model as second service |
+| Model deprecated | Sentence Transformers actively maintained |
+
+---
+
+## References
+
+- [Sentence Transformers Documentation](https://www.sbert.net/)
+- [all-MiniLM-L6-v2 Model Card](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2)
+- [E5 Embedding Models](https://huggingface.co/intfloat/e5-base-v2)
+- [MTEB Leaderboard](https://huggingface.co/spaces/mteb/leaderboard)
+- [Chunking Strategies for RAG](https://www.pinecone.io/learn/chunking-strategies/)
+- [Text Embeddings Visually Explained](https://osanseviero.github.io/hackerllama/blog/posts/sentence_embeddings/)

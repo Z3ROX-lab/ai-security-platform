@@ -1,10 +1,10 @@
 # ADR-003: IAM Strategy
 
 ## Status
-**Accepted**
+**Accepted** - Updated 2026-01-23
 
 ## Date
-2025-01-21
+2025-01-21 (Updated 2026-01-23)
 
 ## Context
 
@@ -48,18 +48,77 @@ The AI Security Platform requires Identity and Access Management (IAM) to:
 
 4. **Head of Platform Alignment**: Matches IAM skill requirements for platform engineering roles.
 
+## Helm Chart Decision (Updated 2026-01-23)
+
+### Charts Evaluated
+
+| Chart | Maintainer | Status | Image |
+|-------|------------|--------|-------|
+| **Bitnami** | Broadcom | ⚠️ Paid since Aug 2025 | `bitnami/keycloak` (legacy) |
+| **Codecentric keycloakx** | Codecentric | ✅ Active, open source | `quay.io/keycloak/keycloak` |
+| **Keycloak Operator** | Keycloak project | ✅ Official | `quay.io/keycloak/keycloak` |
+
+### Why NOT Bitnami
+
+Since August 2025, Bitnami (Broadcom) has:
+- Moved free images to `bitnamilegacy/*` with **no security patches**
+- Required paid subscription for updated images
+- Known HA issues with Infinispan clustering (GitHub #12332)
+
+**Risk**: Using legacy images in a security-focused platform is unacceptable.
+
+### Why Codecentric keycloakx
+
+| Criteria | Assessment |
+|----------|------------|
+| **Active maintenance** | ✅ Regular updates |
+| **Official image** | ✅ Uses `quay.io/keycloak/keycloak` |
+| **External DB support** | ✅ Easy CNPG integration |
+| **HA support** | ✅ Proven in production |
+| **Community** | ✅ Widely used, good docs |
+| **Quarkus-based** | ✅ Modern, lightweight |
+
+### Why NOT Keycloak Operator (for now)
+
+- More complex for initial setup
+- CRD-driven approach adds learning curve
+- Overkill for home lab with single cluster
+- Can migrate later if needed
+
+### Final Decision
+
+**Codecentric keycloakx** chart with:
+- Official Keycloak image from `quay.io/keycloak/keycloak`
+- External PostgreSQL via CNPG (already deployed)
+- Single replica for home lab (scale later if needed)
+
 ## Architecture
 
-### Database: PostgreSQL vs H2
+### Resource Allocation (Home Lab Optimized)
 
-| Aspect | H2 (Embedded) | PostgreSQL |
-|--------|---------------|------------|
-| **Type** | In-memory Java DB | External relational DB |
-| **Multi-instance** | ❌ Single only | ✅ Shared across replicas |
-| **High Availability** | ❌ Impossible | ✅ Replication |
-| **Production** | ❌ Never | ✅ Required |
+| Config | Value | Rationale |
+|--------|-------|-----------|
+| Replicas | 1 | Save RAM for LLM workloads |
+| Memory Request | 512Mi | Minimum for stable operation |
+| Memory Limit | 768Mi | Cap to preserve resources |
+| CPU Request | 250m | Reasonable baseline |
+| CPU Limit | 1000m | Allow burst |
 
-**Decision**: PostgreSQL mandatory for production.
+**Note**: Can scale to 2 replicas later. HA is available but not critical for home lab.
+
+### Database: PostgreSQL via CNPG
+
+| Aspect | Configuration |
+|--------|---------------|
+| Database | `keycloak` |
+| User | `keycloak` |
+| Host | `postgresql-cluster-rw.storage.svc` |
+| Connection | Internal K8s service |
+
+**Why CNPG?**
+- Already deployed in Phase 2
+- HA with automatic failover
+- No additional components needed
 
 ### RBAC Model
 
@@ -104,36 +163,46 @@ User → OAuth2-Proxy → Keycloak → OAuth2-Proxy → App
 
 Apps: Open WebUI, MLflow (no native OIDC)
 
-### High Availability
+### Network Architecture
+
 ```
-         ┌─────────────┐
-         │   Traefik   │
-         └──────┬──────┘
-                │
-       ┌────────┴────────┐
-       ▼                 ▼
-┌────────────┐    ┌────────────┐
-│ Keycloak 1 │◀──▶│ Keycloak 2 │
-└─────┬──────┘    └──────┬─────┘
-      │    Infinispan    │
-      └────────┬─────────┘
-               ▼
-        ┌────────────┐
-        │ PostgreSQL │
-        └────────────┘
+                    ┌─────────────────┐
+                    │     Traefik     │
+                    │  (Ingress)      │
+                    └────────┬────────┘
+                             │
+              ┌──────────────┼──────────────┐
+              │              │              │
+              ▼              ▼              ▼
+    ┌─────────────┐  ┌─────────────┐  ┌─────────────┐
+    │  Keycloak   │  │   ArgoCD    │  │   Grafana   │
+    │  /auth      │  │   /argocd   │  │   /grafana  │
+    └──────┬──────┘  └─────────────┘  └─────────────┘
+           │
+           ▼
+    ┌─────────────┐
+    │ PostgreSQL  │
+    │   (CNPG)    │
+    └─────────────┘
 ```
 
 ## Implementation
 
-### Phase 3A: Core Setup
-1. Deploy PostgreSQL
-2. Deploy Keycloak (Helm via ArgoCD)
-3. Create `ai-platform` realm
-4. Configure roles and groups
+### Phase 3A: Prerequisites
+1. ✅ Deploy PostgreSQL (CNPG) - Done in Phase 2
+2. Deploy Traefik (Ingress Controller)
+3. Create Keycloak database in CNPG
 
-### Phase 3B: Integrations
+### Phase 3B: Keycloak Deployment
+1. Deploy Keycloak via Codecentric keycloakx chart
+2. Configure external PostgreSQL
+3. Setup Ingress (`auth.ai-platform.localhost`)
+4. Create `ai-platform` realm
+5. Configure roles and groups
+
+### Phase 3C: Integrations
 1. ArgoCD OIDC
-2. Grafana OIDC
+2. Grafana OIDC (Phase 8)
 3. OAuth2-Proxy for other apps
 
 ## Consequences
@@ -144,18 +213,22 @@ Apps: Open WebUI, MLflow (no native OIDC)
 - Fine-grained RBAC
 - Audit trail for compliance
 - Transferable skills
+- No vendor lock-in (official images)
+- Future-proof (active maintenance)
 
 ### Negative
-- Additional component (~1GB RAM)
+- Additional component (~768MB RAM)
 - Learning curve for advanced features
 
-### Mitigation
-- Comprehensive documentation
-- Step-by-step guides
-- Knowledge base with deep dive
+### Risks Mitigated
+- ❌ Bitnami licensing risk → ✅ Using Codecentric with official images
+- ❌ Legacy image security → ✅ Using `quay.io/keycloak/keycloak`
+- ❌ RAM constraints → ✅ Single replica, optimized limits
 
 ## References
 
 - [Keycloak Documentation](https://www.keycloak.org/documentation)
+- [Codecentric Helm Charts](https://github.com/codecentric/helm-charts)
+- [Keycloak Official Image](https://quay.io/repository/keycloak/keycloak)
 - [OIDC Specification](https://openid.net/specs/openid-connect-core-1_0.html)
-- [OAuth2-Proxy](https://oauth2-proxy.github.io/oauth2-proxy/)
+- [Bitnami License Change Discussion](https://github.com/keycloak/keycloak/discussions/42170)

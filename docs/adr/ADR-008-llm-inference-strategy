@@ -1,0 +1,649 @@
+# ADR-008: LLM Inference Strategy
+
+## Status
+**Accepted**
+
+## Date
+2025-01-21
+
+## Context
+
+The AI Security Platform requires a Large Language Model (LLM) inference solution for the RAG pipeline and conversational AI features. The LLM generates responses based on user queries and retrieved context from the vector database.
+
+### Requirements
+
+| Requirement | Priority | Notes |
+|-------------|----------|-------|
+| Run locally | Must have | Data sovereignty, no external API calls |
+| CPU inference | Must have | No GPU in home lab |
+| <16GB RAM total | Must have | 32GB system, need room for other services |
+| Good quality responses | Must have | Technical accuracy for security/K8s content |
+| Easy model management | Should have | Download, switch, update models |
+| API compatibility | Should have | OpenAI-compatible API preferred |
+| Streaming responses | Should have | Better UX for long responses |
+| Open source | Must have | No vendor lock-in |
+
+### Constraints
+
+| Resource | Available | Reserved for LLM |
+|----------|-----------|------------------|
+| Total RAM | 32GB | ~10-12GB max |
+| GPU | None (CPU only) | N/A |
+| Storage | 50GB+ | ~20GB for models |
+
+---
+
+## Options Considered
+
+### Option 1: Ollama
+
+| Aspect | Details |
+|--------|---------|
+| **Description** | User-friendly LLM runner, Mac/Linux/Windows |
+| **License** | MIT |
+| **API** | OpenAI-compatible + native API |
+| **Model format** | GGUF (llama.cpp backend) |
+
+#### Pros
+- ✅ Extremely easy to use (`ollama run mistral`)
+- ✅ Built-in model management (pull, list, rm)
+- ✅ OpenAI-compatible API out of the box
+- ✅ Optimized for CPU inference
+- ✅ Active development, large community
+- ✅ Kubernetes-ready (official guidance)
+- ✅ Supports quantized models (Q4, Q5, Q8)
+- ✅ Streaming by default
+
+#### Cons
+- ⚠️ Less control than raw llama.cpp
+- ⚠️ Single-model focus (no batching across models)
+- ⚠️ Limited GPU optimization vs vLLM
+
+---
+
+### Option 2: vLLM
+
+| Aspect | Details |
+|--------|---------|
+| **Description** | High-throughput LLM serving engine |
+| **License** | Apache 2.0 |
+| **API** | OpenAI-compatible |
+| **Optimizations** | PagedAttention, continuous batching |
+
+#### Pros
+- ✅ Highest throughput (GPU)
+- ✅ Excellent for production at scale
+- ✅ Continuous batching
+- ✅ OpenAI-compatible API
+
+#### Cons
+- ❌ **Requires GPU** (not suitable for CPU-only)
+- ❌ Complex setup
+- ❌ Overkill for single-user home lab
+- ❌ Higher resource requirements
+
+**Rejected**: Requires GPU, not suitable for CPU-only home lab.
+
+---
+
+### Option 3: llama.cpp (direct)
+
+| Aspect | Details |
+|--------|---------|
+| **Description** | C/C++ LLM inference, highly optimized |
+| **License** | MIT |
+| **API** | Server mode with OpenAI-compatible API |
+| **Model format** | GGUF |
+
+#### Pros
+- ✅ Most optimized CPU inference
+- ✅ Minimal dependencies
+- ✅ Fine-grained control
+- ✅ Supports all quantization levels
+
+#### Cons
+- ⚠️ Manual model management
+- ⚠️ More setup required
+- ⚠️ Less user-friendly than Ollama
+- ⚠️ No built-in model registry
+
+---
+
+### Option 4: LocalAI
+
+| Aspect | Details |
+|--------|---------|
+| **Description** | Drop-in OpenAI API replacement |
+| **License** | MIT |
+| **API** | 100% OpenAI-compatible |
+| **Backend** | llama.cpp, whisper.cpp, etc. |
+
+#### Pros
+- ✅ Full OpenAI API compatibility
+- ✅ Multiple backends (LLM, audio, images)
+- ✅ Kubernetes-ready
+
+#### Cons
+- ⚠️ More complex than Ollama
+- ⚠️ Slower development pace
+- ⚠️ Less community momentum
+
+---
+
+### Option 5: Text Generation Inference (TGI) - Hugging Face
+
+| Aspect | Details |
+|--------|---------|
+| **Description** | Production-ready inference server |
+| **License** | Apache 2.0 |
+| **Provider** | Hugging Face |
+
+#### Pros
+- ✅ Production-grade
+- ✅ Hugging Face ecosystem integration
+- ✅ Good documentation
+
+#### Cons
+- ❌ **Primarily GPU-focused**
+- ⚠️ Heavier than Ollama
+- ⚠️ More complex setup
+
+**Rejected**: GPU-focused, not optimal for CPU-only.
+
+---
+
+## Decision
+
+**We choose Ollama** for the AI Security Platform.
+
+### Decision Matrix
+
+| Criteria | Weight | Ollama | llama.cpp | LocalAI | vLLM | TGI |
+|----------|--------|--------|-----------|---------|------|-----|
+| CPU performance | 25% | ⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐ | ⭐ | ⭐ |
+| Ease of use | 25% | ⭐⭐⭐ | ⭐⭐ | ⭐⭐ | ⭐⭐ | ⭐⭐ |
+| Model management | 20% | ⭐⭐⭐ | ⭐ | ⭐⭐ | ⭐⭐ | ⭐⭐ |
+| API compatibility | 15% | ⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐ |
+| Community/Support | 15% | ⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐ |
+| **Total** | | **3.0** | 2.4 | 2.4 | 1.9 | 1.9 |
+
+### Why Ollama Wins
+
+1. **Simplicity**: `ollama pull mistral` → done
+2. **CPU-optimized**: Built on llama.cpp, excellent CPU performance
+3. **Model management**: Built-in registry, easy updates
+4. **OpenAI API**: Drop-in compatible, easy integration
+5. **Kubernetes**: Well-documented K8s deployment
+
+---
+
+## Model Selection
+
+### Recommended Models for Home Lab (CPU, 32GB RAM)
+
+| Model | Parameters | Quantization | RAM Usage | Quality | Speed |
+|-------|------------|--------------|-----------|---------|-------|
+| **Mistral 7B** | 7B | Q4_K_M | ~5GB | ⭐⭐⭐ | ⭐⭐⭐ |
+| **Llama 3.1 8B** | 8B | Q4_K_M | ~5.5GB | ⭐⭐⭐ | ⭐⭐⭐ |
+| **Phi-3 Mini** | 3.8B | Q4_K_M | ~2.5GB | ⭐⭐ | ⭐⭐⭐ |
+| **Qwen2.5 7B** | 7B | Q4_K_M | ~5GB | ⭐⭐⭐ | ⭐⭐⭐ |
+| Llama 3.1 70B | 70B | Q4_K_M | ~40GB | ⭐⭐⭐⭐ | ⭐ |
+| Mixtral 8x7B | 46.7B | Q4_K_M | ~26GB | ⭐⭐⭐⭐ | ⭐ |
+
+### Primary Choice: Mistral 7B Instruct (Q4_K_M)
+
+| Aspect | Details |
+|--------|---------|
+| **Model** | `mistral:7b-instruct-v0.3-q4_K_M` |
+| **RAM** | ~5GB loaded |
+| **Context** | 32K tokens |
+| **Strengths** | Excellent instruction following, coding, reasoning |
+| **Why** | Best quality/size ratio for 7B class |
+
+### Secondary Choice: Phi-3 Mini (for lightweight tasks)
+
+| Aspect | Details |
+|--------|---------|
+| **Model** | `phi3:mini` |
+| **RAM** | ~2.5GB loaded |
+| **Context** | 4K tokens |
+| **Strengths** | Fast, efficient, good for simple Q&A |
+| **Why** | When speed > quality, or RAM constrained |
+
+---
+
+## Quantization Explained
+
+### What is Quantization?
+
+```
+Full Precision (FP16):  Each weight = 16 bits  →  14GB for 7B model
+Quantized (Q4_K_M):     Each weight = ~4 bits  →  ~4GB for 7B model
+```
+
+### Quantization Levels
+
+| Level | Bits/Weight | Size (7B) | Quality Loss | Recommendation |
+|-------|-------------|-----------|--------------|----------------|
+| Q2_K | 2.5 | ~2.5GB | Significant | ❌ Avoid |
+| Q3_K_M | 3.4 | ~3GB | Noticeable | ⚠️ If RAM critical |
+| **Q4_K_M** | 4.5 | ~4GB | Minimal | ✅ **Best balance** |
+| Q5_K_M | 5.5 | ~5GB | Very small | ✅ If RAM allows |
+| Q6_K | 6.5 | ~6GB | Negligible | ✅ High quality |
+| Q8_0 | 8.0 | ~7.5GB | None | For benchmarking |
+| FP16 | 16.0 | ~14GB | None (baseline) | ❌ Too heavy |
+
+### Our Choice: Q4_K_M
+
+- **4.5 bits/weight**: Excellent compression
+- **Minimal quality loss**: <1% perplexity increase
+- **~5GB for Mistral 7B**: Leaves room for other services
+
+---
+
+## Architecture
+
+### Deployment Overview
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                 Namespace: ai-inference                          │
+│                                                                  │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │                     Ollama Server                           │ │
+│  │                                                             │ │
+│  │  ┌─────────────────┐    ┌─────────────────┐               │ │
+│  │  │  Model Storage  │    │   REST API      │               │ │
+│  │  │                 │    │                 │               │ │
+│  │  │  /root/.ollama  │    │  Port: 11434    │               │ │
+│  │  │  • mistral:7b   │    │                 │               │ │
+│  │  │  • phi3:mini    │    │  Endpoints:     │               │ │
+│  │  │                 │    │  • /api/generate│               │ │
+│  │  │  PVC: 20Gi      │    │  • /api/chat    │               │ │
+│  │  │  (Longhorn)     │    │  • /v1/chat/... │◄── OpenAI API │ │
+│  │  │                 │    │                 │               │ │
+│  │  └─────────────────┘    └─────────────────┘               │ │
+│  │                                                             │ │
+│  │  Resources:                                                 │ │
+│  │  • CPU: 2-4 cores                                          │ │
+│  │  • RAM: 8-12Gi (depends on model)                          │ │
+│  │  • Storage: 20Gi PVC                                       │ │
+│  │                                                             │ │
+│  └────────────────────────────────────────────────────────────┘ │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Integration with RAG Pipeline
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│                           RAG + LLM FLOW                                  │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                           │
+│  ┌─────────┐    ┌───────────┐    ┌─────────┐    ┌──────────────────┐    │
+│  │  User   │    │ Embedding │    │ Qdrant  │    │     Ollama       │    │
+│  │  Query  │───▶│  Service  │───▶│ Search  │───▶│   (Mistral 7B)   │    │
+│  └─────────┘    └───────────┘    └─────────┘    └──────────────────┘    │
+│       │                               │                   │              │
+│       │                               │                   │              │
+│  "How do I                      Top 5 chunks         Generated          │
+│   secure my                     as context           response           │
+│   K8s cluster?"                                      with sources       │
+│                                                                          │
+│                                                                          │
+│  PROMPT CONSTRUCTION                                                     │
+│  ═══════════════════                                                     │
+│                                                                          │
+│  ┌────────────────────────────────────────────────────────────────┐     │
+│  │ System: You are a helpful AI assistant. Answer based on the    │     │
+│  │         provided context. If unsure, say so.                   │     │
+│  │                                                                 │     │
+│  │ Context:                                                        │     │
+│  │ [Chunk 1: NetworkPolicy documentation...]                      │     │
+│  │ [Chunk 2: Pod Security Standards...]                           │     │
+│  │ [Chunk 3: RBAC best practices...]                              │     │
+│  │                                                                 │     │
+│  │ User: How do I secure my K8s cluster?                          │     │
+│  └────────────────────────────────────────────────────────────────┘     │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Implementation
+
+### ArgoCD Application
+
+```yaml
+# argocd/applications/ai/ollama.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ollama
+  namespace: argocd
+spec:
+  project: ai
+  source:
+    repoURL: https://otwld.github.io/ollama-helm
+    chart: ollama
+    targetRevision: 0.52.0  # Pin version
+    helm:
+      valuesObject:
+        ollama:
+          models:
+            - mistral:7b-instruct-v0.3-q4_K_M
+        resources:
+          requests:
+            memory: "8Gi"
+            cpu: "2"
+          limits:
+            memory: "12Gi"
+            cpu: "4"
+        persistentVolume:
+          enabled: true
+          size: 20Gi
+          storageClass: longhorn
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ai-inference
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+```
+
+### Custom Values
+
+```yaml
+# values/ollama/values.yaml
+
+ollama:
+  # Pre-pull models on startup
+  models:
+    - mistral:7b-instruct-v0.3-q4_K_M
+    - phi3:mini
+
+  # GPU disabled (CPU only)
+  gpu:
+    enabled: false
+
+resources:
+  requests:
+    memory: "8Gi"
+    cpu: "2000m"
+  limits:
+    memory: "12Gi"
+    cpu: "4000m"
+
+persistentVolume:
+  enabled: true
+  size: 20Gi
+  storageClass: longhorn
+
+service:
+  type: ClusterIP
+  port: 11434
+
+# Liveness/Readiness probes
+livenessProbe:
+  httpGet:
+    path: /
+    port: http
+  initialDelaySeconds: 60
+  periodSeconds: 30
+
+readinessProbe:
+  httpGet:
+    path: /
+    port: http
+  initialDelaySeconds: 30
+  periodSeconds: 10
+```
+
+---
+
+## API Usage
+
+### OpenAI-Compatible API (Recommended)
+
+```bash
+# Chat completion (OpenAI format)
+curl http://ollama.ai-inference.svc:11434/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "mistral:7b-instruct-v0.3-q4_K_M",
+    "messages": [
+      {"role": "system", "content": "You are a helpful assistant."},
+      {"role": "user", "content": "Explain Kubernetes NetworkPolicies"}
+    ],
+    "stream": true
+  }'
+```
+
+### Native Ollama API
+
+```bash
+# Generate (simple)
+curl http://ollama.ai-inference.svc:11434/api/generate \
+  -d '{
+    "model": "mistral",
+    "prompt": "Explain Kubernetes NetworkPolicies",
+    "stream": false
+  }'
+
+# Chat (with history)
+curl http://ollama.ai-inference.svc:11434/api/chat \
+  -d '{
+    "model": "mistral",
+    "messages": [
+      {"role": "user", "content": "What is a Pod?"},
+      {"role": "assistant", "content": "A Pod is the smallest..."},
+      {"role": "user", "content": "How do I secure it?"}
+    ]
+  }'
+```
+
+### Model Management
+
+```bash
+# Pull a new model
+curl http://ollama:11434/api/pull -d '{"name": "llama3.1:8b-q4_K_M"}'
+
+# List models
+curl http://ollama:11434/api/tags
+
+# Delete a model
+curl -X DELETE http://ollama:11434/api/delete -d '{"name": "old-model"}'
+```
+
+---
+
+## Performance Expectations (CPU Only)
+
+### Mistral 7B Q4_K_M on CPU
+
+| Metric | Expected Value | Notes |
+|--------|----------------|-------|
+| **Tokens/second** | 5-15 tok/s | Depends on CPU |
+| **First token latency** | 2-5 seconds | Model loading if cold |
+| **Memory (loaded)** | ~5GB | Plus OS overhead |
+| **Context processing** | ~1-2 tok/s | For long prompts |
+
+### Optimization Tips
+
+1. **Keep model loaded**: Set `OLLAMA_KEEP_ALIVE=24h`
+2. **Limit context**: Use shorter retrieved chunks
+3. **Use smaller model**: Phi-3 for simple queries
+4. **CPU threads**: Set `OLLAMA_NUM_THREADS` to match CPU cores
+
+---
+
+## Multi-Model Strategy
+
+### Model Router Pattern
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      RAG API Service                             │
+│                                                                  │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │                    Model Router                             │ │
+│  │                                                             │ │
+│  │  Query Analysis:                                            │ │
+│  │  ┌─────────────────┐                                       │ │
+│  │  │ Simple Q&A      │ ──▶ phi3:mini (fast, 2.5GB)          │ │
+│  │  │ "What is X?"    │                                       │ │
+│  │  └─────────────────┘                                       │ │
+│  │                                                             │ │
+│  │  ┌─────────────────┐                                       │ │
+│  │  │ Complex/Code    │ ──▶ mistral:7b (quality, 5GB)        │ │
+│  │  │ "How to impl?"  │                                       │ │
+│  │  └─────────────────┘                                       │ │
+│  │                                                             │ │
+│  │  ┌─────────────────┐                                       │ │
+│  │  │ Security/Audit  │ ──▶ mistral:7b (accuracy critical)   │ │
+│  │  │ "Is this safe?" │                                       │ │
+│  │  └─────────────────┘                                       │ │
+│  │                                                             │ │
+│  └────────────────────────────────────────────────────────────┘ │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Implementation (Future Phase)
+
+```python
+def select_model(query: str, task_type: str) -> str:
+    """Route to appropriate model based on query complexity."""
+    
+    # Simple queries → fast model
+    if task_type == "simple_qa" or len(query) < 50:
+        return "phi3:mini"
+    
+    # Code generation → best model
+    if "code" in task_type or "implement" in query.lower():
+        return "mistral:7b-instruct-v0.3-q4_K_M"
+    
+    # Security analysis → accurate model
+    if "security" in task_type or "vulnerability" in query.lower():
+        return "mistral:7b-instruct-v0.3-q4_K_M"
+    
+    # Default
+    return "mistral:7b-instruct-v0.3-q4_K_M"
+```
+
+---
+
+## Security Considerations
+
+### OWASP LLM Top 10 Coverage
+
+| Risk | Mitigation |
+|------|------------|
+| **LLM01: Prompt Injection** | Input validation, guardrails (Phase 7) |
+| **LLM02: Insecure Output** | Output sanitization, no code execution |
+| **LLM03: Training Data Poisoning** | Use trusted model sources (Ollama registry) |
+| **LLM04: Model DoS** | Resource limits, request throttling |
+| **LLM05: Supply Chain** | Pin model versions, verify checksums |
+| **LLM06: Sensitive Info** | No PII in prompts, audit logging |
+| **LLM07: Insecure Plugin** | No plugins in MVP |
+| **LLM08: Excessive Agency** | RAG only, no tool use in Phase 6 |
+| **LLM09: Overreliance** | Disclaimer in responses |
+| **LLM10: Model Theft** | NetworkPolicies, no external access |
+
+### Network Policies
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ollama-netpol
+  namespace: ai-inference
+spec:
+  podSelector:
+    matchLabels:
+      app: ollama
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow from RAG API only
+    - from:
+        - podSelector:
+            matchLabels:
+              app: rag-api
+      ports:
+        - port: 11434
+  egress:
+    # DNS only (no internet)
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - port: 53
+          protocol: UDP
+```
+
+---
+
+## Upgrade Path
+
+### Phase 6 (MVP)
+```
+Ollama + Mistral 7B Q4_K_M (CPU)
+└── Good quality, 5GB RAM
+└── ~10 tokens/second
+```
+
+### Phase 9+ (GPU available)
+```
+Ollama + Mistral 7B Q8 or FP16 (GPU)
+└── Better quality
+└── 50-100 tokens/second
+```
+
+### Enterprise Migration
+```
+vLLM + Llama 3.1 70B (Multi-GPU)
+└── Production throughput
+└── Or Azure OpenAI (with private endpoint)
+```
+
+---
+
+## Consequences
+
+### Positive
+- Simple deployment and model management
+- CPU-optimized inference
+- OpenAI-compatible API
+- Easy model switching
+- Active community and development
+- Good documentation for Kubernetes
+
+### Negative
+- Slower than GPU inference (5-15 tok/s vs 100+ tok/s)
+- Limited to models that fit in RAM
+- No batching across multiple users
+
+### Risks and Mitigations
+
+| Risk | Mitigation |
+|------|------------|
+| Too slow for users | Use smaller model for simple queries |
+| Model quality issues | Test models, upgrade to larger if needed |
+| Ollama deprecated | llama.cpp server as fallback (same models) |
+| RAM exceeded | Monitor, use smaller quantization |
+
+---
+
+## References
+
+- [Ollama Documentation](https://ollama.ai/)
+- [Ollama GitHub](https://github.com/ollama/ollama)
+- [Ollama Helm Chart](https://github.com/otwld/ollama-helm)
+- [llama.cpp](https://github.com/ggerganov/llama.cpp)
+- [GGUF Format](https://github.com/ggerganov/ggml/blob/master/docs/gguf.md)
+- [Mistral AI](https://mistral.ai/)
+- [OWASP LLM Top 10](https://owasp.org/www-project-top-10-for-large-language-model-applications/)
+- [Quantization Explained](https://huggingface.co/docs/optimum/concept_guides/quantization)
