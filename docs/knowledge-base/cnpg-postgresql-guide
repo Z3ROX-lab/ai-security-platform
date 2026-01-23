@@ -8,56 +8,29 @@ This document explains the CloudNativePG (CNPG) architecture used in the AI Secu
 
 ```mermaid
 flowchart TB
-    subgraph ArgoCD["ArgoCD (GitOps)"]
-        RA[root-app]
-        RA --> APP1[cnpg-operator<br/>Application]
-        RA --> APP2[postgresql<br/>Application]
+    subgraph GitOps
+        ROOT[root-app] --> OP[cnpg-operator]
+        ROOT --> PG[postgresql]
     end
 
-    subgraph Operator["CNPG Operator (cnpg-system namespace)"]
-        CRD[Custom Resource Definitions]
-        CTRL[Controller Pod]
-        
-        CRD --> |defines| C1[clusters.postgresql.cnpg.io]
-        CRD --> |defines| C2[backups.postgresql.cnpg.io]
-        CRD --> |defines| C3[scheduledbackups.postgresql.cnpg.io]
-        
-        CTRL --> |watches| C1
-        CTRL --> |watches| C2
-        CTRL --> |watches| C3
+    subgraph cnpg-system
+        CTRL[CNPG Controller]
     end
 
-    subgraph PGCluster["PostgreSQL Cluster (storage namespace)"]
-        CR[Cluster CR<br/>postgresql-cluster]
-        
-        CR --> |managed by operator| P1[Pod 1<br/>PRIMARY<br/>Read/Write]
-        CR --> |managed by operator| P2[Pod 2<br/>REPLICA<br/>Read-Only]
-        CR --> |managed by operator| P3[Pod 3<br/>REPLICA<br/>Read-Only]
-        
-        P1 --> |streaming replication| P2
-        P1 --> |streaming replication| P3
-        
-        SVC1[Service: postgresql-cluster-rw]
-        SVC2[Service: postgresql-cluster-ro]
-        SVC3[Service: postgresql-cluster-r]
-        
-        SVC1 --> P1
-        SVC2 --> P2
-        SVC2 --> P3
-        SVC3 --> P1
-        SVC3 --> P2
-        SVC3 --> P3
+    subgraph storage
+        P1[Pod 1<br/>PRIMARY]
+        P2[Pod 2<br/>REPLICA]
+        P3[Pod 3<br/>REPLICA]
+        P1 -.->|replication| P2
+        P1 -.->|replication| P3
     end
 
-    APP1 --> |deploys| Operator
-    APP2 --> |deploys| CR
-
-    CTRL --> |creates & manages| PGCluster
-
-    style P1 fill:#4CAF50,color:#fff
-    style P2 fill:#2196F3,color:#fff
-    style P3 fill:#2196F3,color:#fff
-    style CTRL fill:#FF9800,color:#fff
+    OP -->|deploys| CTRL
+    PG -->|creates| CR[Cluster CR]
+    CTRL -->|watches & manages| CR
+    CR -->|creates| P1
+    CR -->|creates| P2
+    CR -->|creates| P3
 ```
 
 ## The Operator Pattern Explained
