@@ -1,0 +1,31 @@
+# Traefik Ingress Controller
+# Source: https://github.com/traefik/traefik-helm-chart
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: traefik
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  sources:
+    - repoURL: https://traefik.github.io/charts
+      chart: traefik
+      targetRevision: 38.0.0
+      helm:
+        valueFiles:
+          - $values/argocd/applications/infrastructure/traefik/values.yaml
+    - repoURL: https://github.com/Z3ROX-lab/ai-security-platform
+      targetRevision: master
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: traefik
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

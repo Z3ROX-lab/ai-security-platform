@@ -1,0 +1,57 @@
+# Traefik values for AI Security Platform (Home Lab)
+
+# Deployment
+deployment:
+  replicas: 1
+
+# Ports
+ports:
+  web:
+    port: 8000
+    exposedPort: 80
+    expose:
+      default: true
+    protocol: TCP
+  websecure:
+    port: 8443
+    exposedPort: 443
+    expose:
+      default: true
+    protocol: TCP
+
+# Service - LoadBalancer for K3d
+service:
+  type: LoadBalancer
+
+# Dashboard (for debugging)
+ingressRoute:
+  dashboard:
+    enabled: true
+    matchRule: Host(`traefik.localhost`)
+    entryPoints:
+      - web
+
+# Resources (home lab optimized)
+resources:
+  requests:
+    cpu: "100m"
+    memory: "128Mi"
+  limits:
+    cpu: "500m"
+    memory: "256Mi"
+
+# Logs
+logs:
+  general:
+    level: INFO
+  access:
+    enabled: true
+
+# Providers
+providers:
+  kubernetesCRD:
+    enabled: true
+    allowCrossNamespace: true
+  kubernetesIngress:
+    enabled: true
+    allowEmptyServices: true
