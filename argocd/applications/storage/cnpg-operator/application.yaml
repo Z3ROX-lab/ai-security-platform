@@ -1,29 +1,29 @@
-# PostgreSQL Cluster using CloudNativePG
-# For Keycloak, MLflow, and other services
+# CloudNativePG Operator
+# CNCF project for PostgreSQL on Kubernetes
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: postgresql
+  name: cnpg-operator
   namespace: argocd
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
   sources:
-    # Source 1: Official CNPG cluster Helm chart
+    # Source 1: Official CNPG Helm chart
     - repoURL: https://cloudnative-pg.github.io/charts
-      chart: cluster
-      targetRevision: 0.5.0
+      chart: cloudnative-pg
+      targetRevision: 0.27.0
       helm:
         valueFiles:
-          - $values/argocd/applications/storage/postgresql/values.yaml
+          - $values/argocd/applications/storage/cnpg-operator/values.yaml
     # Source 2: Our values from Git
     - repoURL: https://github.com/Z3ROX-lab/ai-security-platform
       targetRevision: master
       ref: values
   destination:
     server: https://kubernetes.default.svc
-    namespace: storage
+    namespace: cnpg-system
   syncPolicy:
     syncOptions:
       - CreateNamespace=true

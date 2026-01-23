@@ -1,73 +1,39 @@
-# PostgreSQL values for AI Security Platform (Home Lab)
-# Bitnami Helm chart with official PostgreSQL image
+# PostgreSQL Cluster values for AI Security Platform (Home Lab)
+# Chart: https://cloudnative-pg.github.io/charts/cluster
+# Uses CloudNativePG operator (CNCF project)
 
-# Allow non-Bitnami images
-global:
-  security:
-    allowInsecureImages: true
+# Cluster name
+name: postgresql
+
+# Single instance for home lab (no HA)
+instances: 1
+
+# Image - official CloudNativePG PostgreSQL
+imageName: ghcr.io/cloudnative-pg/postgresql:16
+
+# Storage configuration
+storage:
+  size: 5Gi
   storageClass: local-path
 
-# Override image to use official PostgreSQL
-image:
-  registry: docker.io
-  repository: postgres
-  tag: "16-alpine"
-  pullPolicy: IfNotPresent
+# Resources for home lab
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
 
-# Authentication
-auth:
-  postgresPassword: "postgres-admin-password"  # TODO: Use Sealed Secret
-  username: "appuser"
-  password: "appuser-password"                  # TODO: Use Sealed Secret
-  database: "appdb"
-  enablePostgresUser: true
-
-# Primary server configuration
-primary:
-  resources:
-    limits:
-      cpu: 500m
-      memory: 512Mi
-    requests:
-      cpu: 100m
-      memory: 256Mi
-  
-  persistence:
-    enabled: true
-    size: 5Gi
-    storageClass: local-path
-
-  # Init scripts - create databases for services
+# Bootstrap configuration - create initial databases
+bootstrap:
   initdb:
-    scripts:
-      init-databases.sql: |
-        -- Database for Keycloak
-        CREATE DATABASE keycloak;
-        CREATE USER keycloak WITH ENCRYPTED PASSWORD 'keycloak-password';
-        GRANT ALL PRIVILEGES ON DATABASE keycloak TO keycloak;
-        
-        -- Database for MLflow
-        CREATE DATABASE mlflow;
-        CREATE USER mlflow WITH ENCRYPTED PASSWORD 'mlflow-password';
-        GRANT ALL PRIVILEGES ON DATABASE mlflow TO mlflow;
-        
-        -- Grant schema permissions (PostgreSQL 15+)
-        \c keycloak
-        GRANT ALL ON SCHEMA public TO keycloak;
-        
-        \c mlflow
-        GRANT ALL ON SCHEMA public TO mlflow;
+    database: appdb
+    owner: appuser
+    postInitSQL:
+      - CREATE DATABASE keycloak
+      - CREATE DATABASE mlflow
 
-# Disable read replicas for home lab
-readReplicas:
-  replicaCount: 0
-
-# Disable metrics for now
-metrics:
+# Monitoring (disable for now, enable in Phase 10)
+monitoring:
   enabled: false
-
-# Service configuration
-service:
-  type: ClusterIP
-  ports:
-    postgresql: 5432
