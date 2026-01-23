@@ -5,17 +5,17 @@
 
 output "cluster_name" {
   description = "Name of the K3d cluster"
-  value       = k3d_cluster.ai_platform.name
+  value       = var.cluster_name
 }
 
 output "servers" {
   description = "Number of server nodes"
-  value       = k3d_cluster.ai_platform.servers
+  value       = var.servers
 }
 
 output "agents" {
   description = "Number of agent nodes"
-  value       = k3d_cluster.ai_platform.agents
+  value       = var.agents
 }
 
 output "registry_url" {
@@ -25,7 +25,12 @@ output "registry_url" {
 
 output "kubeconfig_command" {
   description = "Command to get kubeconfig"
-  value       = "k3d kubeconfig get ${k3d_cluster.ai_platform.name}"
+  value       = "k3d kubeconfig get ${var.cluster_name}"
+}
+
+output "longhorn_volume_path" {
+  description = "Path to Longhorn storage on host"
+  value       = "/tmp/k3d-longhorn"
 }
 
 output "next_steps" {
