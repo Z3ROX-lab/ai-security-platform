@@ -1,6 +1,6 @@
 # =============================================================================
 # AI Security Platform - Phase 1: Infrastructure
-# K3d Cluster Configuration (using k3d CLI for shared volume support)
+# K3d Cluster Configuration
 # =============================================================================
 
 terraform {
@@ -21,7 +21,7 @@ terraform {
 provider "null" {}
 
 # -----------------------------------------------------------------------------
-# K3d Cluster via CLI (supports shared volumes for Longhorn)
+# K3d Cluster via CLI
 # -----------------------------------------------------------------------------
 
 resource "null_resource" "k3d_cluster" {
@@ -38,16 +38,13 @@ resource "null_resource" "k3d_cluster" {
   # Create cluster
   provisioner "local-exec" {
     command = <<-EOT
-      # Create Longhorn directory
-      mkdir -p /tmp/k3d-longhorn
-      chmod 777 /tmp/k3d-longhorn
-
-      # Create K3d cluster with shared volume for Longhorn
+      # Create K3d cluster
+      # Note: Using local-path storage (K3d default) instead of Longhorn
+      # Longhorn requires shared mount propagation not supported on WSL2/Docker Desktop
       k3d cluster create ${var.cluster_name} \
         --servers ${var.servers} \
         --agents ${var.agents} \
         --image ${var.k3s_image} \
-        --volume /tmp/k3d-longhorn:/var/lib/longhorn:shared \
         --port "443:443@loadbalancer" \
         --port "80:80@loadbalancer" \
         --port "8080:8080@loadbalancer" \
@@ -79,6 +76,9 @@ resource "null_resource" "wait_for_cluster" {
       echo "Waiting for cluster to be ready..."
       kubectl wait --for=condition=Ready nodes --all --timeout=120s
       echo "Cluster is ready!"
+      echo ""
+      echo "Storage: Using local-path-provisioner (K3d default)"
+      echo "Note: Longhorn requires shared mount propagation not available on WSL2/Docker Desktop"
     EOT
   }
 }

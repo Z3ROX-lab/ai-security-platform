@@ -24,11 +24,11 @@ primary:
       cpu: 100m
       memory: 256Mi
   
-  # Persistence
+  # Persistence - using local-path (K3d default)
   persistence:
     enabled: true
     size: 5Gi
-    storageClass: longhorn
+    storageClass: local-path
   
   # PostgreSQL configuration
   configuration: |
@@ -82,15 +82,10 @@ readReplicas:
 # Metrics (enable for Phase 10 - Observability)
 metrics:
   enabled: false
-  # Enable later:
-  # serviceMonitor:
-  #   enabled: true
-  #   namespace: monitoring
 
 # Backup configuration (enable for Phase 10)
 backup:
   enabled: false
-  # Enable later with Velero or pg_dump cronjob
 
 # Network policy
 networkPolicy:

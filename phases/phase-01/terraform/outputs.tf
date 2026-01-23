@@ -28,9 +28,9 @@ output "kubeconfig_command" {
   value       = "k3d kubeconfig get ${var.cluster_name}"
 }
 
-output "longhorn_volume_path" {
-  description = "Path to Longhorn storage on host"
-  value       = "/tmp/k3d-longhorn"
+output "storage_class" {
+  description = "Default storage class"
+  value       = "local-path"
 }
 
 output "next_steps" {
@@ -39,11 +39,15 @@ output "next_steps" {
     
     ✅ Cluster created successfully!
     
+    Storage: local-path (K3d default)
+    Note: Longhorn not available on WSL2/Docker Desktop (shared mount limitation)
+    
     Next steps:
     1. Verify cluster: kubectl get nodes
-    2. Install ArgoCD: kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
-    3. Get ArgoCD password: kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
-    4. Access ArgoCD UI: kubectl port-forward svc/argocd-server -n argocd 8080:443
+    2. Verify storage: kubectl get storageclass
+    3. Install ArgoCD: kubectl create namespace argocd && kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+    4. Get ArgoCD password: kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
+    5. Port-forward ArgoCD: kubectl port-forward svc/argocd-server -n argocd 9090:443
     
   EOT
 }

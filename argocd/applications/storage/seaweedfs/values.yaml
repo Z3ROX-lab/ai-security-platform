@@ -20,17 +20,11 @@ master:
       cpu: 50m
       memory: 128Mi
   
-  # Persistence
+  # Persistence - using local-path (K3d default)
   persistence:
     enabled: true
     size: 1Gi
-    storageClass: longhorn
-  
-  # Configuration
-  config: |
-    [master.maintenance]
-    scripts = """
-    """
+    storageClass: local-path
 
 # Volume server - stores actual data
 volume:
@@ -46,11 +40,11 @@ volume:
       cpu: 100m
       memory: 256Mi
   
-  # Persistence - where objects are stored
+  # Persistence - using local-path (K3d default)
   persistence:
     enabled: true
     size: 10Gi
-    storageClass: longhorn
+    storageClass: local-path
   
   # Data directories
   dataDirs:
@@ -72,20 +66,17 @@ filer:
       cpu: 100m
       memory: 256Mi
   
-  # Persistence for filer metadata
+  # Persistence for filer metadata - using local-path
   persistence:
     enabled: true
     size: 2Gi
-    storageClass: longhorn
+    storageClass: local-path
   
   # S3 API configuration
   s3:
     enabled: true
     port: 8333
-    # Enable authentication
     enableAuth: true
-    # Create default buckets
-    # Buckets will be created manually or via init job
 
 # S3 Gateway service
 s3:
@@ -100,7 +91,6 @@ s3:
       cpu: 50m
       memory: 128Mi
   
-  # Service configuration
   service:
     type: ClusterIP
     port: 8333
