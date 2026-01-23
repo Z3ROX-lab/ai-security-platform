@@ -1,5 +1,5 @@
 # SeaweedFS - S3-compatible object storage
-# Replaces MinIO (which is in maintenance mode)
+# Using Bitnami Helm chart
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -10,10 +10,10 @@ metadata:
 spec:
   project: default
   sources:
-    # Source 1: Official SeaweedFS Helm chart
-    - repoURL: https://seaweedfs.github.io/seaweedfs/helm
+    # Source 1: Bitnami SeaweedFS Helm chart
+    - repoURL: https://charts.bitnami.com/bitnami
       chart: seaweedfs
-      targetRevision: 3.71.0
+      targetRevision: 6.0.1
       helm:
         valueFiles:
           - $values/argocd/applications/storage/seaweedfs/values.yaml
@@ -27,4 +27,3 @@ spec:
   syncPolicy:
     syncOptions:
       - CreateNamespace=true
-    # Manual sync for storage infrastructure (safety)

@@ -1,17 +1,14 @@
 # SeaweedFS values for AI Security Platform (Home Lab)
+# Bitnami Helm chart: https://github.com/bitnami/charts/tree/main/bitnami/seaweedfs
 # S3-compatible object storage for ML artifacts, models, datasets
 
+# Global settings
 global:
-  # Single-node setup for home lab
-  replicationPlacement: "000"  # No replication
-  enableSecurity: false        # Enable later with mTLS
+  storageClass: local-path
 
 # Master server - manages volume servers
 master:
-  enabled: true
-  replicas: 1
-  
-  # Resources for home lab
+  replicaCount: 1
   resources:
     limits:
       cpu: 200m
@@ -19,8 +16,6 @@ master:
     requests:
       cpu: 50m
       memory: 128Mi
-  
-  # Persistence - using local-path (K3d default)
   persistence:
     enabled: true
     size: 1Gi
@@ -28,10 +23,7 @@ master:
 
 # Volume server - stores actual data
 volume:
-  enabled: true
-  replicas: 1
-  
-  # Resources for home lab
+  replicaCount: 1
   resources:
     limits:
       cpu: 500m
@@ -39,25 +31,14 @@ volume:
     requests:
       cpu: 100m
       memory: 256Mi
-  
-  # Persistence - using local-path (K3d default)
   persistence:
     enabled: true
     size: 10Gi
     storageClass: local-path
-  
-  # Data directories
-  dataDirs:
-    - name: data
-      type: hdd
-      maxVolumes: 50
 
-# Filer - provides S3 API
+# Filer - provides S3 API and file system interface
 filer:
-  enabled: true
-  replicas: 1
-  
-  # Resources for home lab
+  replicaCount: 1
   resources:
     limits:
       cpu: 300m
@@ -65,24 +46,14 @@ filer:
     requests:
       cpu: 100m
       memory: 256Mi
-  
-  # Persistence for filer metadata - using local-path
   persistence:
     enabled: true
     size: 2Gi
     storageClass: local-path
-  
-  # S3 API configuration
-  s3:
-    enabled: true
-    port: 8333
-    enableAuth: true
 
-# S3 Gateway service
+# S3 API Gateway
 s3:
   enabled: true
-  replicas: 1
-  
   resources:
     limits:
       cpu: 200m
@@ -90,20 +61,13 @@ s3:
     requests:
       cpu: 50m
       memory: 128Mi
-  
-  service:
-    type: ClusterIP
-    port: 8333
 
-# Disable components not needed for home lab
-cronjob:
-  enabled: false
+# Security context
+podSecurityContext:
+  enabled: true
+  fsGroup: 1001
 
-# Service configuration
-service:
-  master:
-    type: ClusterIP
-  volume:
-    type: ClusterIP
-  filer:
-    type: ClusterIP
+containerSecurityContext:
+  enabled: true
+  runAsUser: 1001
+  runAsNonRoot: true
