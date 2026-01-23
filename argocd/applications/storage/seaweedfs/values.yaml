@@ -1,6 +1,13 @@
 # SeaweedFS values for AI Security Platform (Home Lab)
-# Bitnami Helm chart: https://github.com/bitnami/charts/tree/main/bitnami/seaweedfs
+# Bitnami Helm chart with official SeaweedFS image
 # S3-compatible object storage for ML artifacts, models, datasets
+
+# Override images to use official SeaweedFS (Bitnami images not available)
+image:
+  registry: docker.io
+  repository: chrislusf/seaweedfs
+  tag: "3.77"
+  pullPolicy: IfNotPresent
 
 # Global settings
 global:
@@ -61,6 +68,10 @@ s3:
     requests:
       cpu: 50m
       memory: 128Mi
+
+# Disable MariaDB (use embedded leveldb for filer metadata)
+mariadb:
+  enabled: false
 
 # Security context
 podSecurityContext:
