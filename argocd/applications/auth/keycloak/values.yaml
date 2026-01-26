@@ -10,10 +10,6 @@ args:
   - "--hostname-strict=false"
   - "--proxy-headers=xforwarded"
 
-# Disable chart's proxy config (uses deprecated option)
-proxy:
-  enabled: false
-
 # Database configuration (external PostgreSQL via CNPG)
 database:
   vendor: postgres

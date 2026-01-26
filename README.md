@@ -87,7 +87,7 @@ keycloak        Synced        Healthy
 | Service | URL | Credentials |
 |---------|-----|-------------|
 | **ArgoCD** | https://localhost:8080 | admin / (see install) |
-| **Keycloak** | http://auth.ai-platform.localhost | admin / admin123 |
+| **Keycloak** | http://auth.ai-platform.localhost | (see install) |
 
 ### Keycloak Configuration
 
