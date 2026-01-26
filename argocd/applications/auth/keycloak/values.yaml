@@ -59,23 +59,6 @@ resources:
     cpu: "1000m"
     memory: "768Mi"
 
-# Pod-level security context
-securityContext:
-  runAsNonRoot: true
-  runAsUser: 1000
-  fsGroup: 1000
-  seccompProfile:
-    type: RuntimeDefault
-
-# Container-level security context
-containerSecurityContext:
-  allowPrivilegeEscalation: false
-  capabilities:
-    drop:
-      - ALL
-  runAsNonRoot: true
-  runAsUser: 1000
-
 # Admin credentials
 extraEnv: |
   - name: KEYCLOAK_ADMIN
