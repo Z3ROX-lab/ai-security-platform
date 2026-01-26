@@ -1,0 +1,62 @@
+# Keycloak values for AI Security Platform (Home Lab)
+# Chart: codecentric/keycloakx 7.1.7
+
+# Single replica for home lab
+replicas: 1
+
+# Database configuration (external PostgreSQL via CNPG)
+database:
+  vendor: postgres
+  hostname: postgresql-cluster-rw.storage.svc
+  port: 5432
+  database: keycloak
+  username: keycloak
+  existingSecret: keycloak-db-secret
+  existingSecretKey: password
+
+# Proxy settings (Traefik handles TLS termination)
+proxy:
+  enabled: true
+  mode: edge
+
+# HTTP settings
+http:
+  relativePath: "/"
+
+# Health & metrics
+health:
+  enabled: true
+metrics:
+  enabled: true
+
+# Ingress via Traefik
+ingress:
+  enabled: true
+  ingressClassName: traefik
+  rules:
+    - host: auth.ai-platform.localhost
+      paths:
+        - path: /
+          pathType: Prefix
+
+# Resources for home lab
+resources:
+  requests:
+    cpu: "250m"
+    memory: "512Mi"
+  limits:
+    cpu: "1000m"
+    memory: "768Mi"
+
+# Admin credentials (change in production!)
+extraEnv: |
+  - name: KEYCLOAK_ADMIN
+    value: admin
+  - name: KEYCLOAK_ADMIN_PASSWORD
+    value: admin123
+  - name: KC_HOSTNAME
+    value: auth.ai-platform.localhost
+  - name: KC_HOSTNAME_STRICT
+    value: "false"
+  - name: KC_HTTP_ENABLED
+    value: "true"
