@@ -369,9 +369,53 @@ curl -I http://auth.ai-platform.localhost
 
 ## Step 9: Create Realm
 
+### Understanding Master vs Custom Realms
+
+Keycloak uses a multi-tenant architecture with **realms**:
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                      KEYCLOAK REALMS                                     │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  ┌──────────────────────┐    ┌──────────────────────┐                  │
+│  │    MASTER REALM      │    │    AI-PLATFORM       │                  │
+│  │                      │    │       REALM          │                  │
+│  │  Purpose:            │    │                      │                  │
+│  │  Keycloak admin only │    │  Purpose:            │                  │
+│  │                      │    │  Your application    │                  │
+│  │  Contains:           │    │                      │                  │
+│  │  • admin user        │    │  Contains:           │                  │
+│  │  • super admins      │    │  • argocd client     │                  │
+│  │                      │    │  • open-webui client │                  │
+│  │  ⚠️ DO NOT USE FOR   │    │  • testuser          │                  │
+│  │    APPLICATIONS      │    │  • application roles │                  │
+│  └──────────────────────┘    └──────────────────────┘                  │
+│                                                                          │
+│         ADMIN ACCESS              APPLICATION ACCESS                    │
+│       admin / admin123           testuser / testpassword                │
+│                                                                          │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+| Realm | Purpose | Who Uses It |
+|-------|---------|-------------|
+| **master** | Keycloak administration | Keycloak admins only |
+| **ai-platform** | Your application users | ArgoCD, Open WebUI, end users |
+
+### Why This Separation?
+
+1. **Security** — Master realm is isolated from application failures
+2. **Multi-tenancy** — You could have multiple realms (dev, staging, prod)
+3. **Least privilege** — App users never access Keycloak admin functions
+
+### Create the Realm
+
 1. Click **Keycloak** dropdown (top-left) → **Create realm**
 2. **Realm name:** `ai-platform`
 3. Click **Create**
+
+> **Important:** After creating the realm, make sure to select **ai-platform** in the dropdown (top-left) before creating clients, roles, and users. If you see "master" selected, switch to "ai-platform" first.
 
 ---
 
@@ -546,6 +590,52 @@ type C:\Windows\System32\drivers\etc\hosts
 | HTTP enabled | HTTPS only with valid certificates |
 | Single replica | 2+ replicas with HA |
 | No backup | Regular Realm exports + DB backups |
+
+### TLS Configuration (cert-manager)
+
+To enable HTTPS on Keycloak with cert-manager:
+
+```yaml
+# In values.yaml
+ingress:
+  enabled: true
+  ingressClassName: traefik
+  annotations:
+    cert-manager.io/cluster-issuer: ai-platform-ca-issuer   # Add this
+  tls:                                                        # Add this block
+    - hosts:
+        - auth.ai-platform.localhost
+      secretName: keycloak-tls
+  rules:
+    - host: auth.ai-platform.localhost
+      paths:
+        - path: /
+          pathType: Prefix
+```
+
+Verify certificate:
+```bash
+kubectl get certificate -n auth
+# Should show: keycloak-tls   True
+```
+
+Access via HTTPS: **https://auth.ai-platform.localhost**
+
+> **Note:** Browser will show a warning for self-signed certificates. This is expected for home lab.
+
+### Pod Security Standards
+
+Keycloak requires **baseline** PSS level (not restricted) because the default container image doesn't include all required securityContext settings for restricted compliance.
+
+```yaml
+# Namespace configuration
+metadata:
+  name: auth
+  labels:
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/audit: baseline
+    pod-security.kubernetes.io/warn: baseline
+```
 
 ### Next Steps
 

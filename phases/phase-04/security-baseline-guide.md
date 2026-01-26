@@ -759,9 +759,308 @@ AFTER Phase 4:
 
 ---
 
+---
+
+# Part 6: TLS with cert-manager
+
+## What is cert-manager?
+
+cert-manager automates certificate management in Kubernetes. It can issue certificates from various sources:
+
+| Issuer Type | Use Case |
+|-------------|----------|
+| Self-signed | Development, home lab |
+| Let's Encrypt | Production with public domain |
+| Vault | Enterprise PKI |
+| Internal CA | Corporate environments |
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    CERT-MANAGER FLOW                                     │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  1. Ingress with annotation                                              │
+│  ┌─────────────────────────────────────────────────────────────────┐    │
+│  │ metadata:                                                        │    │
+│  │   annotations:                                                   │    │
+│  │     cert-manager.io/cluster-issuer: ai-platform-ca-issuer       │    │
+│  │ spec:                                                            │    │
+│  │   tls:                                                           │    │
+│  │     - hosts: [argocd.ai-platform.localhost]                     │    │
+│  │       secretName: argocd-tls                                    │    │
+│  └─────────────────────────────────────────────────────────────────┘    │
+│                              │                                           │
+│                              ▼                                           │
+│  2. cert-manager detects annotation                                      │
+│  ┌─────────────────────────────────────────────────────────────────┐    │
+│  │ cert-manager watches Ingress resources                          │    │
+│  │ Sees: cert-manager.io/cluster-issuer annotation                 │    │
+│  │ Creates: Certificate resource automatically                      │    │
+│  └─────────────────────────────────────────────────────────────────┘    │
+│                              │                                           │
+│                              ▼                                           │
+│  3. Certificate issued                                                   │
+│  ┌─────────────────────────────────────────────────────────────────┐    │
+│  │ ClusterIssuer signs the certificate                             │    │
+│  │ Secret created: argocd-tls                                      │    │
+│  │ Contains: tls.crt, tls.key                                      │    │
+│  └─────────────────────────────────────────────────────────────────┘    │
+│                              │                                           │
+│                              ▼                                           │
+│  4. Traefik uses the certificate                                        │
+│  ┌─────────────────────────────────────────────────────────────────┐    │
+│  │ Traefik reads Secret from Ingress tls config                    │    │
+│  │ Serves HTTPS with the certificate                               │    │
+│  └─────────────────────────────────────────────────────────────────┘    │
+│                                                                          │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+## Our Setup: Self-Signed CA
+
+For the home lab, we use a self-signed CA chain:
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    CERTIFICATE CHAIN                                     │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  ┌──────────────────────┐                                               │
+│  │  selfsigned-issuer   │  ClusterIssuer (bootstrap)                    │
+│  │                      │  Creates the root CA                          │
+│  └──────────┬───────────┘                                               │
+│             │                                                            │
+│             ▼                                                            │
+│  ┌──────────────────────┐                                               │
+│  │   ai-platform-ca     │  Certificate (CA)                             │
+│  │                      │  Valid 10 years                               │
+│  │   Secret:            │  Stored in cert-manager namespace             │
+│  │   ai-platform-ca-secret                                              │
+│  └──────────┬───────────┘                                               │
+│             │                                                            │
+│             ▼                                                            │
+│  ┌──────────────────────┐                                               │
+│  │ ai-platform-ca-issuer│  ClusterIssuer (production)                   │
+│  │                      │  Signs all app certificates                   │
+│  └──────────┬───────────┘                                               │
+│             │                                                            │
+│             ├────────────────┬────────────────┐                         │
+│             ▼                ▼                ▼                         │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐                  │
+│  │  argocd-tls  │  │ keycloak-tls │  │  future...   │                  │
+│  │              │  │              │  │              │                  │
+│  │  namespace:  │  │  namespace:  │  │              │                  │
+│  │    argocd    │  │    auth      │  │              │                  │
+│  └──────────────┘  └──────────────┘  └──────────────┘                  │
+│                                                                          │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+## Implementation Files
+
+### cert-manager Application (Helm chart)
+
+**File:** `argocd/applications/infrastructure/cert-manager/application.yaml`
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cert-manager
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://charts.jetstack.io
+    chart: cert-manager
+    targetRevision: v1.17.2
+    helm:
+      parameters:
+        - name: installCRDs
+          value: "true"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cert-manager
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+```
+
+### ClusterIssuers Configuration
+
+**File:** `argocd/applications/infrastructure/cert-manager-config/manifests/cluster-issuer.yaml`
+```yaml
+# Self-signed ClusterIssuer for home lab TLS
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned-issuer
+spec:
+  selfSigned: {}
+---
+# CA Certificate (signs other certificates)
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: ai-platform-ca
+  namespace: cert-manager
+spec:
+  isCA: true
+  commonName: ai-platform-ca
+  secretName: ai-platform-ca-secret
+  duration: 87600h  # 10 years
+  issuerRef:
+    name: selfsigned-issuer
+    kind: ClusterIssuer
+---
+# ClusterIssuer using our CA
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: ai-platform-ca-issuer
+spec:
+  ca:
+    secretName: ai-platform-ca-secret
+```
+
+## Adding TLS to Ingress Resources
+
+To enable TLS on any Ingress, add:
+
+```yaml
+metadata:
+  annotations:
+    cert-manager.io/cluster-issuer: ai-platform-ca-issuer
+spec:
+  tls:
+    - hosts:
+        - <your-hostname>
+      secretName: <name>-tls
+```
+
+### Example: ArgoCD Ingress with TLS
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argocd-server-ingress
+  namespace: argocd
+  annotations:
+    cert-manager.io/cluster-issuer: ai-platform-ca-issuer
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - argocd.ai-platform.localhost
+      secretName: argocd-tls
+  rules:
+    - host: argocd.ai-platform.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: argocd-server
+                port:
+                  number: 80
+```
+
+## Verification Commands
+
+```bash
+# Check cert-manager pods
+kubectl get pods -n cert-manager
+
+# List ClusterIssuers
+kubectl get clusterissuers
+
+# List all certificates
+kubectl get certificates -A
+
+# Check certificate details
+kubectl describe certificate argocd-tls -n argocd
+
+# Check certificate secret
+kubectl get secret argocd-tls -n argocd -o yaml
+```
+
+## Browser Warning
+
+Since we use self-signed certificates, browsers will show a warning. This is expected for home lab. Click "Advanced" → "Accept Risk" to proceed.
+
+---
+
+# Part 7: Exposing ArgoCD via Traefik
+
+## Why?
+
+Before: `kubectl port-forward svc/argocd-server -n argocd 9090:443`
+After: `https://argocd.ai-platform.localhost`
+
+No more manual port-forward!
+
+## Configuration Steps
+
+### 1. Enable HTTP mode in ArgoCD
+
+ArgoCD defaults to HTTPS. For Traefik to handle TLS termination:
+
+```bash
+kubectl patch configmap argocd-cmd-params-cm -n argocd --type merge -p '{"data":{"server.insecure":"true"}}'
+kubectl rollout restart deployment argocd-server -n argocd
+```
+
+### 2. Create Ingress with TLS
+
+See ArgoCD Ingress example above in Part 6.
+
+### 3. Update Windows hosts file
+
+Add to `C:\Windows\System32\drivers\etc\hosts`:
+```
+127.0.0.1 argocd.ai-platform.localhost
+```
+
+---
+
+# Summary
+
+## Final Security Configuration
+
+| Namespace | PSS Level | Reason |
+|-----------|-----------|--------|
+| storage | restricted | PostgreSQL compliant |
+| auth | **baseline** | Keycloak needs some capabilities |
+| traefik | baseline | Ingress controller needs NET_BIND |
+| cnpg-system | restricted | Operator compliant |
+
+> **Note:** We initially set auth to `restricted` but Keycloak's default securityContext doesn't fully comply. Using `baseline` is acceptable for IAM components.
+
+## TLS Enabled Services
+
+| Service | URL | Certificate |
+|---------|-----|-------------|
+| ArgoCD | https://argocd.ai-platform.localhost | argocd-tls |
+| Keycloak | https://auth.ai-platform.localhost | keycloak-tls |
+
+## Components Deployed in Phase 4
+
+| Component | Namespace | Purpose |
+|-----------|-----------|---------|
+| NetworkPolicies (3) | storage, auth, traefik | Network segmentation |
+| PSS Labels | 4 namespaces | Pod security enforcement |
+| cert-manager | cert-manager | Certificate automation |
+| ClusterIssuers (2) | cluster-wide | Certificate signing |
+| Ingress (ArgoCD) | argocd | External access |
+
 ## Next Steps
 
 - [ ] Phase 5: Ollama + Mistral 7B (AI Inference)
 - [ ] Add NetworkPolicies for ai-apps, ai-inference namespaces
-- [ ] Expose ArgoCD via Traefik (no more port-forward)
 - [ ] Integrate ArgoCD with Keycloak OIDC

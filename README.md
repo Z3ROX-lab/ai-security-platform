@@ -86,8 +86,8 @@ keycloak        Synced        Healthy
 
 | Service | URL | Credentials |
 |---------|-----|-------------|
-| **ArgoCD** | https://localhost:8080 | (see install) |
-| **Keycloak** | http://auth.ai-platform.localhost | (see install) |
+| **ArgoCD** | https://localhost:8080 | admin / (see install) |
+| **Keycloak** | http://auth.ai-platform.localhost | admin / admin123 |
 
 ### Keycloak Configuration
 
@@ -218,11 +218,22 @@ ai-security-platform/
 | **Database** | PostgreSQL (CloudNativePG) | ✅ Running |
 | **IAM** | Keycloak | ✅ Running |
 | **Ingress** | Traefik | ✅ Running |
+| **TLS** | cert-manager (self-signed CA) | ✅ Running |
 | **LLM** | Ollama + Mistral 7B | 🔲 Planned |
 | **VectorDB** | Qdrant | 🔲 Planned |
 | **Guardrails** | Rebuff, LLM Guard, NeMo | 🔲 Planned |
 | **Observability** | Prometheus, Grafana | 🔲 Planned |
 | **MLOps** | MLflow | 🔲 Planned |
+
+## 🔐 Access URLs (HTTPS)
+
+| Service | URL | Credentials |
+|---------|-----|-------------|
+| **ArgoCD** | https://argocd.ai-platform.localhost | admin / (see install) |
+| **Keycloak** | https://auth.ai-platform.localhost | admin / admin123 |
+| **Open WebUI** (future) | https://chat.ai-platform.localhost | via Keycloak |
+
+> **Note:** Self-signed certificates - accept browser warning to proceed.
 
 ## 📄 License
 
