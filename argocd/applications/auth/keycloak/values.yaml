@@ -58,5 +58,3 @@ extraEnv: |
     value: auth.ai-platform.localhost
   - name: KC_HOSTNAME_STRICT
     value: "false"
-  - name: KC_HTTP_ENABLED
-    value: "true"
