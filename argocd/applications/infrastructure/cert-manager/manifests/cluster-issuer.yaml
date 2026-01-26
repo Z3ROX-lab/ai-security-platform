@@ -1,0 +1,31 @@
+# Self-signed ClusterIssuer for home lab TLS
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned-issuer
+spec:
+  selfSigned: {}
+---
+# CA Certificate (signs other certificates)
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: ai-platform-ca
+  namespace: cert-manager
+spec:
+  isCA: true
+  commonName: ai-platform-ca
+  secretName: ai-platform-ca-secret
+  duration: 87600h  # 10 years
+  issuerRef:
+    name: selfsigned-issuer
+    kind: ClusterIssuer
+---
+# ClusterIssuer using our CA
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: ai-platform-ca-issuer
+spec:
+  ca:
+    secretName: ai-platform-ca-secret
