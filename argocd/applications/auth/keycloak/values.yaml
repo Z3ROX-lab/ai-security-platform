@@ -59,6 +59,24 @@ resources:
     cpu: "1000m"
     memory: "768Mi"
 
+# Security context for PSS restricted compliance
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  runAsNonRoot: true
+  runAsUser: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
 # Admin credentials
 extraEnv: |
   - name: KEYCLOAK_ADMIN
