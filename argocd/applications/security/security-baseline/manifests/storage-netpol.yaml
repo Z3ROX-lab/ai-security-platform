@@ -1,0 +1,57 @@
+# NetworkPolicy for PostgreSQL - storage namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgresql-policy
+  namespace: storage
+spec:
+  podSelector:
+    matchLabels:
+      cnpg.io/cluster: postgresql-cluster
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow from Keycloak (auth namespace)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: auth
+      ports:
+        - protocol: TCP
+          port: 5432
+    # Allow from future ai-apps namespace
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ai-apps
+      ports:
+        - protocol: TCP
+          port: 5432
+    # Allow from CNPG operator
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: cnpg-system
+      ports:
+        - protocol: TCP
+          port: 5432
+        - protocol: TCP
+          port: 8000
+  egress:
+    # Allow DNS
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+    # Allow replication between PostgreSQL pods
+    - to:
+        - podSelector:
+            matchLabels:
+              cnpg.io/cluster: postgresql-cluster
+      ports:
+        - protocol: TCP
+          port: 5432
