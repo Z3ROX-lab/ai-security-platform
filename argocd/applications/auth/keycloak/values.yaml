@@ -3,12 +3,12 @@
 
 replicas: 1
 
-# Args for production mode (entrypoint is already kc.sh)
+# Args for production mode
 args:
   - "start"
   - "--http-enabled=true"
   - "--hostname-strict=false"
-  - "--proxy=edge"
+  - "--proxy-headers=xforwarded"
 
 # Database configuration (external PostgreSQL via CNPG)
 database:
