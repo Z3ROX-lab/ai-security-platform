@@ -1,13 +1,14 @@
 # Keycloak values for AI Security Platform (Home Lab)
 # Chart: codecentric/keycloakx 7.1.7
 
-# Single replica for home lab
 replicas: 1
 
-# Startup command
-command:
-  - "/opt/keycloak/bin/kc.sh"
+# Args for production mode (entrypoint is already kc.sh)
+args:
   - "start"
+  - "--http-enabled=true"
+  - "--hostname-strict=false"
+  - "--proxy=edge"
 
 # Database configuration (external PostgreSQL via CNPG)
 database:
@@ -18,11 +19,6 @@ database:
   username: keycloak
   existingSecret: keycloak-db-secret
   existingSecretKey: password
-
-# Proxy settings (Traefik handles TLS termination)
-proxy:
-  enabled: true
-  mode: edge
 
 # HTTP settings
 http:
@@ -53,7 +49,7 @@ resources:
     cpu: "1000m"
     memory: "768Mi"
 
-# Admin credentials (change in production!)
+# Admin credentials
 extraEnv: |
   - name: KEYCLOAK_ADMIN
     value: admin
@@ -61,5 +57,3 @@ extraEnv: |
     value: admin123
   - name: KC_HOSTNAME
     value: auth.ai-platform.localhost
-  - name: KC_HOSTNAME_STRICT
-    value: "false"
