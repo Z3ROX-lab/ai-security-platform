@@ -59,7 +59,7 @@ resources:
     cpu: "1000m"
     memory: "768Mi"
 
-# Security context for PSS restricted compliance
+# Pod-level security context
 securityContext:
   runAsNonRoot: true
   runAsUser: 1000
@@ -67,6 +67,7 @@ securityContext:
   seccompProfile:
     type: RuntimeDefault
 
+# Container-level security context
 containerSecurityContext:
   allowPrivilegeEscalation: false
   capabilities:
@@ -74,8 +75,6 @@ containerSecurityContext:
       - ALL
   runAsNonRoot: true
   runAsUser: 1000
-  seccompProfile:
-    type: RuntimeDefault
 
 # Admin credentials
 extraEnv: |
