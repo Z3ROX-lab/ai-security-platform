@@ -1,0 +1,28 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ollama
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  sources:
+    - repoURL: https://otwld.github.io/ollama-helm
+      chart: ollama
+      targetRevision: 0.52.0
+      helm:
+        valueFiles:
+          - $values/argocd/applications/ai/ollama/values.yaml
+    - repoURL: https://github.com/Z3ROX-lab/ai-security-platform
+      targetRevision: master
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ai-inference
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

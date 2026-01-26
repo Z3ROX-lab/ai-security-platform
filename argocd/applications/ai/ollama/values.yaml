@@ -1,0 +1,53 @@
+# Ollama values for AI Security Platform
+# Based on ADR-008: LLM Inference Strategy
+
+# Pre-pull models on startup
+ollama:
+  models:
+    - mistral:7b-instruct-v0.3-q4_K_M
+
+  # GPU disabled (CPU only - home lab)
+  gpu:
+    enabled: false
+
+# Resources (Mistral 7B Q4_K_M needs ~5GB)
+resources:
+  requests:
+    memory: "6Gi"
+    cpu: "2000m"
+  limits:
+    memory: "8Gi"
+    cpu: "4000m"
+
+# Persistent storage for models
+persistentVolume:
+  enabled: true
+  size: 20Gi
+  storageClass: local-path
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 11434
+
+# Keep model loaded (avoid cold start)
+extraEnv:
+  - name: OLLAMA_KEEP_ALIVE
+    value: "24h"
+  - name: OLLAMA_NUM_PARALLEL
+    value: "1"
+
+# Probes (model loading can be slow)
+livenessProbe:
+  enabled: true
+  path: /
+  initialDelaySeconds: 120
+  periodSeconds: 30
+  timeoutSeconds: 5
+
+readinessProbe:
+  enabled: true
+  path: /
+  initialDelaySeconds: 60
+  periodSeconds: 10
+  timeoutSeconds: 5
