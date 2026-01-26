@@ -1,0 +1,650 @@
+# Phase 2-3: Step-by-Step Guide
+
+## Overview
+
+| Phase | Components | Status |
+|-------|------------|--------|
+| Phase 2 | PostgreSQL (CloudNativePG) | ✅ Done |
+| Phase 3 | Traefik Ingress | ✅ Done |
+| Phase 3 | Keycloak IAM | ✅ Done |
+
+---
+
+# Phase 2: PostgreSQL with CloudNativePG
+
+## Understanding CNPG Architecture
+
+CloudNativePG uses the **Operator Pattern**:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    CNPG ARCHITECTURE                             │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  NAMESPACE: cnpg-system                                          │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │                    CNPG OPERATOR                            │ │
+│  │                                                             │ │
+│  │  • Watches Cluster CRDs                                     │ │
+│  │  • Creates/manages PostgreSQL pods                          │ │
+│  │  • Handles failover, backups, upgrades                      │ │
+│  └────────────────────────────────────────────────────────────┘ │
+│                            │                                     │
+│                            │ watches                             │
+│                            ▼                                     │
+│  NAMESPACE: storage                                              │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │                 Cluster CRD                                 │ │
+│  │            (postgresql-cluster)                             │ │
+│  │                                                             │ │
+│  │  Your declaration: "I want 1 PostgreSQL instance"           │ │
+│  └────────────────────────────────────────────────────────────┘ │
+│                            │                                     │
+│                            │ creates                             │
+│                            ▼                                     │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │              MANAGED RESOURCES                              │ │
+│  │                                                             │ │
+│  │  • postgresql-cluster-1 (Pod)                               │ │
+│  │  • postgresql-cluster-rw (Service - read/write)             │ │
+│  │  • postgresql-cluster-ro (Service - read only)              │ │
+│  │  • postgresql-cluster-r  (Service - any replica)            │ │
+│  │  • Secrets (credentials)                                    │ │
+│  │  • ConfigMaps                                               │ │
+│  └────────────────────────────────────────────────────────────┘ │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Step 1: Deploy CNPG Operator
+
+### Create Application Files
+
+**Directory:** `argocd/applications/storage/cnpg-operator/`
+
+**application.yaml:**
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cnpg-operator
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  sources:
+    - repoURL: https://cloudnative-pg.github.io/charts
+      chart: cloudnative-pg
+      targetRevision: 0.27.0
+      helm:
+        valueFiles:
+          - $values/argocd/applications/storage/cnpg-operator/values.yaml
+    - repoURL: https://github.com/Z3ROX-lab/ai-security-platform
+      targetRevision: master
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cnpg-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true  # Required for large CRDs
+```
+
+**values.yaml:**
+```yaml
+# CNPG Operator - minimal config for home lab
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+```
+
+### Verify Operator
+
+```bash
+kubectl get pods -n cnpg-system
+kubectl get crd | grep cnpg
+```
+
+Expected output:
+```
+NAME                                          CREATED AT
+backups.postgresql.cnpg.io                    ...
+clusters.postgresql.cnpg.io                   ...
+poolers.postgresql.cnpg.io                    ...
+scheduledbackups.postgresql.cnpg.io           ...
+```
+
+---
+
+## Step 2: Deploy PostgreSQL Cluster
+
+### Create Application Files
+
+**Directory:** `argocd/applications/storage/postgresql/`
+
+**application.yaml:**
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: postgresql
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  sources:
+    - repoURL: https://cloudnative-pg.github.io/charts
+      chart: cluster
+      targetRevision: 0.4.0  # Note: 0.5.0 has externalClusters bug
+      helm:
+        valueFiles:
+          - $values/argocd/applications/storage/postgresql/values.yaml
+    - repoURL: https://github.com/Z3ROX-lab/ai-security-platform
+      targetRevision: master
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: storage
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+```
+
+> **Note:** We use chart version **0.4.0** instead of 0.5.0 because 0.5.0 has a bug where `externalClusters: null` fails validation.
+
+**values.yaml:**
+```yaml
+# PostgreSQL Cluster values for AI Security Platform (Home Lab)
+# Chart: https://cloudnative-pg.github.io/charts/cluster
+
+# Cluster name override
+fullnameOverride: "postgresql-cluster"
+
+# Mode: standalone (not replica or recovery)
+mode: standalone
+
+cluster:
+  # Number of instances - single for home lab
+  instances: 1
+
+  # Storage configuration
+  storage:
+    size: 5Gi
+    storageClass: local-path
+
+  # Resources for home lab
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  # Bootstrap configuration - create initial databases
+  initdb:
+    database: appdb
+    owner: appuser
+    postInitSQL:
+      - CREATE DATABASE keycloak;
+      - CREATE DATABASE mlflow;
+      - CREATE DATABASE openwebui;
+
+  # Monitoring (disable for now)
+  monitoring:
+    enabled: false
+
+# Backups disabled for home lab
+backups:
+  enabled: false
+```
+
+### Key Configuration Explained
+
+| Parameter | Purpose |
+|-----------|---------|
+| `fullnameOverride` | Sets the cluster name to `postgresql-cluster` |
+| `mode: standalone` | Single cluster, not replica or recovery |
+| `cluster.instances: 1` | One pod for home lab (use 3 for HA) |
+| `postInitSQL` | Creates additional databases at bootstrap |
+| `backups.enabled: false` | No object storage for home lab |
+
+---
+
+## Step 3: Verify PostgreSQL Deployment
+
+```bash
+# Check cluster status
+kubectl get clusters.postgresql.cnpg.io -A
+
+# Check pods
+kubectl get pods -n storage
+
+# List databases
+kubectl exec -it postgresql-cluster-1 -n storage -- psql -U postgres -c "\l"
+```
+
+Expected databases:
+```
+   Name    |  Owner   | Encoding | ...
+-----------+----------+----------+
+ appdb     | appuser  | UTF8     |
+ keycloak  | postgres | UTF8     |
+ mlflow    | postgres | UTF8     |
+ openwebui | postgres | UTF8     |
+ postgres  | postgres | UTF8     |
+```
+
+---
+
+## Step 4: Create Application Database Users
+
+The `postInitSQL` creates databases, but we need dedicated users for security.
+
+### Why Dedicated Users?
+
+| Approach | Security | Recommendation |
+|----------|----------|----------------|
+| All apps use `postgres` | ❌ Superuser access | Never in production |
+| All apps share one user | ⚠️ No isolation | Not recommended |
+| **One user per app** | ✅ Least privilege | **Best practice** |
+
+### Create Users
+
+```bash
+# Keycloak user
+kubectl exec -it postgresql-cluster-1 -n storage -- psql -U postgres -c \
+  "CREATE USER keycloak WITH PASSWORD 'keycloak-secret-pwd'; \
+   GRANT ALL PRIVILEGES ON DATABASE keycloak TO keycloak; \
+   ALTER DATABASE keycloak OWNER TO keycloak;"
+
+# MLflow user
+kubectl exec -it postgresql-cluster-1 -n storage -- psql -U postgres -c \
+  "CREATE USER mlflow WITH PASSWORD 'mlflow-secret-pwd'; \
+   GRANT ALL PRIVILEGES ON DATABASE mlflow TO mlflow; \
+   ALTER DATABASE mlflow OWNER TO mlflow;"
+
+# Open WebUI user
+kubectl exec -it postgresql-cluster-1 -n storage -- psql -U postgres -c \
+  "CREATE USER openwebui WITH PASSWORD 'openwebui-secret-pwd'; \
+   GRANT ALL PRIVILEGES ON DATABASE openwebui TO openwebui; \
+   ALTER DATABASE openwebui OWNER TO openwebui;"
+```
+
+### Verify Users
+
+```bash
+kubectl exec -it postgresql-cluster-1 -n storage -- psql -U postgres -c "\du"
+```
+
+---
+
+## Step 5: Connection Strings
+
+Applications connect using internal DNS:
+
+| Service | DNS Name | Use Case |
+|---------|----------|----------|
+| **Read-Write** | `postgresql-cluster-rw.storage.svc:5432` | Primary operations |
+| **Read-Only** | `postgresql-cluster-ro.storage.svc:5432` | Read replicas |
+
+**Example JDBC connection string:**
+```
+jdbc:postgresql://postgresql-cluster-rw.storage.svc:5432/keycloak
+```
+
+---
+
+# Phase 3A: Traefik Ingress Controller
+
+## Understanding Traefik's Role
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    INGRESS FLOW                                  │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  EXTERNAL (Windows Browser)                                      │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │  http://auth.ai-platform.localhost                       │    │
+│  │  http://chat.ai-platform.localhost                       │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│                            │                                     │
+│                            ▼ (localhost:80)                     │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │                        K3d                               │    │
+│  │                  (port mapping)                          │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│                            │                                     │
+│                            ▼                                     │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │                      TRAEFIK                             │    │
+│  │                                                          │    │
+│  │  • Routes by hostname (Host header)                      │    │
+│  │  • Load balances to backends                             │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│                            │                                     │
+│              ┌─────────────┼─────────────┐                      │
+│              ▼             ▼             ▼                      │
+│  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐            │
+│  │   Keycloak   │ │  Open WebUI  │ │   ArgoCD     │            │
+│  │   :8080      │ │    :8080     │ │    :443      │            │
+│  └──────────────┘ └──────────────┘ └──────────────┘            │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Step 1: Deploy Traefik
+
+### Create Application Files
+
+**Directory:** `argocd/applications/infrastructure/traefik/`
+
+**application.yaml:**
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: traefik
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  sources:
+    - repoURL: https://traefik.github.io/charts
+      chart: traefik
+      targetRevision: 38.0.0
+      helm:
+        valueFiles:
+          - $values/argocd/applications/infrastructure/traefik/values.yaml
+    - repoURL: https://github.com/Z3ROX-lab/ai-security-platform
+      targetRevision: master
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: traefik
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+```
+
+**values.yaml:**
+```yaml
+# Traefik values for AI Security Platform (Home Lab)
+
+deployment:
+  replicas: 1
+
+# Ports
+ports:
+  web:
+    port: 8000
+    exposedPort: 80
+    expose:
+      default: true
+  websecure:
+    port: 8443
+    exposedPort: 443
+    expose:
+      default: true
+
+# Service - LoadBalancer for K3d
+service:
+  type: LoadBalancer
+
+# Resources (home lab optimized)
+resources:
+  requests:
+    cpu: "100m"
+    memory: "128Mi"
+  limits:
+    cpu: "500m"
+    memory: "256Mi"
+
+# Logs
+logs:
+  general:
+    level: INFO
+  access:
+    enabled: true
+
+# Providers
+providers:
+  kubernetesCRD:
+    enabled: true
+    allowCrossNamespace: true
+  kubernetesIngress:
+    enabled: true
+```
+
+## Step 2: Verify Traefik
+
+```bash
+# Check pods
+kubectl get pods -n traefik
+
+# Check services
+kubectl get svc -n traefik
+```
+
+Expected:
+```
+NAME      TYPE           CLUSTER-IP      EXTERNAL-IP    PORT(S)
+traefik   LoadBalancer   10.43.x.x       172.20.0.x     80:30xxx/TCP,443:32xxx/TCP
+```
+
+## Step 3: Test Routing
+
+```bash
+# Should return 404 (no routes yet)
+curl -v http://localhost 2>&1 | head -20
+```
+
+A **404 from Traefik** means it's working but no routes are configured.
+
+---
+
+# Phase 3B: Keycloak IAM
+
+> **Full guide:** See `keycloak-install-config-guide.md`
+
+## Quick Steps
+
+### 1. Create Database User
+
+```bash
+kubectl exec -it postgresql-cluster-1 -n storage -- psql -U postgres -c \
+  "CREATE USER keycloak WITH PASSWORD 'keycloak-secret-pwd'; \
+   GRANT ALL PRIVILEGES ON DATABASE keycloak TO keycloak; \
+   ALTER DATABASE keycloak OWNER TO keycloak;"
+```
+
+### 2. Create Namespace and Secret
+
+```bash
+kubectl create namespace auth
+
+kubectl create secret generic keycloak-db-secret -n auth \
+  --from-literal=username=keycloak \
+  --from-literal=password=keycloak-secret-pwd
+```
+
+### 3. Deploy via ArgoCD
+
+**application.yaml:** (see Keycloak guide for full content)
+
+**values.yaml:** (key points)
+```yaml
+replicas: 1
+
+# Use args, not command
+args:
+  - "start"
+  - "--http-enabled=true"
+  - "--hostname-strict=false"
+  - "--proxy-headers=xforwarded"
+
+# Disable deprecated proxy option
+proxy:
+  enabled: false
+
+database:
+  vendor: postgres
+  hostname: postgresql-cluster-rw.storage.svc
+  existingSecret: keycloak-db-secret
+
+ingress:
+  enabled: true
+  ingressClassName: traefik
+  rules:
+    - host: auth.ai-platform.localhost
+```
+
+### 4. Configure Windows Hosts
+
+Add to `C:\Windows\System32\drivers\etc\hosts`:
+```
+127.0.0.1 auth.ai-platform.localhost
+127.0.0.1 chat.ai-platform.localhost
+```
+
+### 5. Access Keycloak
+
+- URL: http://auth.ai-platform.localhost
+- Login: admin / admin123
+
+### 6. Configure Keycloak
+
+| Item | Configuration |
+|------|---------------|
+| **Realm** | ai-platform |
+| **Roles** | platform-admin, ai-engineer, security-auditor, viewer |
+| **Clients** | argocd, open-webui |
+| **Test User** | testuser / testpassword (role: ai-engineer) |
+
+---
+
+# Useful Commands Reference
+
+## PostgreSQL
+
+```bash
+# List databases
+kubectl exec -it postgresql-cluster-1 -n storage -- psql -U postgres -c "\l"
+
+# List users
+kubectl exec -it postgresql-cluster-1 -n storage -- psql -U postgres -c "\du"
+
+# Connect to specific database
+kubectl exec -it postgresql-cluster-1 -n storage -- psql -U postgres -d keycloak
+
+# Check cluster status
+kubectl get clusters.postgresql.cnpg.io -A
+```
+
+## Traefik
+
+```bash
+# Check pods
+kubectl get pods -n traefik
+
+# Check services
+kubectl get svc -n traefik
+
+# View logs
+kubectl logs -n traefik -l app.kubernetes.io/name=traefik -f
+```
+
+## Keycloak
+
+```bash
+# Check pods
+kubectl get pods -n auth
+
+# View logs
+kubectl logs -n auth keycloak-keycloakx-0 -f
+
+# Restart
+kubectl rollout restart statefulset keycloak-keycloakx -n auth
+```
+
+## ArgoCD
+
+```bash
+# Check all applications
+kubectl get applications -n argocd
+
+# Force refresh
+kubectl patch application <name> -n argocd --type merge \
+  -p '{"metadata": {"annotations": {"argocd.argoproj.io/refresh": "hard"}}}'
+```
+
+---
+
+# Troubleshooting
+
+## CNPG Chart 0.5.0 externalClusters Bug
+
+**Error:**
+```
+spec.externalClusters: Invalid value: "null": must be of type array
+```
+
+**Solution:** Use chart version 0.4.0 instead of 0.5.0
+
+## Keycloak CrashLoopBackOff
+
+**Check logs:**
+```bash
+kubectl logs -n auth keycloak-keycloakx-0 --previous
+```
+
+**Common fixes:**
+- Use `args` not `command`
+- Set `proxy.enabled: false`
+- Use `--proxy-headers=xforwarded`
+
+## ArgoCD Not Detecting New Apps
+
+```bash
+# Force refresh root-app
+kubectl patch application root-app -n argocd --type merge \
+  -p '{"metadata": {"annotations": {"argocd.argoproj.io/refresh": "hard"}}}'
+```
+
+---
+
+# Phase 2-3 Summary
+
+| Component | Namespace | Chart | Version | Status |
+|-----------|-----------|-------|---------|--------|
+| CNPG Operator | cnpg-system | cloudnative-pg | 0.27.0 | ✅ |
+| PostgreSQL | storage | cluster | 0.4.0 | ✅ |
+| Traefik | traefik | traefik | 38.0.0 | ✅ |
+| Keycloak | auth | keycloakx | 7.1.7 | ✅ |
+
+## Next Steps
+
+- [ ] Phase 4: Kubernetes Security Baseline (NetworkPolicies, PSS)
+- [ ] Phase 5: AI Inference (Ollama, Mistral 7B)
+- [ ] Integrate ArgoCD with Keycloak OIDC
+- [ ] Implement Sealed Secrets

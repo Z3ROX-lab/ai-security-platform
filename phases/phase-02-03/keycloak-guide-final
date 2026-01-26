@@ -1,0 +1,555 @@
+# Keycloak Installation & Configuration Guide
+
+## Overview
+
+Keycloak is the IAM (Identity and Access Management) solution for the AI Security Platform, providing:
+- OIDC/OAuth2 authentication
+- Single Sign-On (SSO)
+- Role-Based Access Control (RBAC)
+- User federation and identity brokering
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                      KEYCLOAK ARCHITECTURE                               │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  EXTERNAL ACCESS                                                         │
+│  ┌────────────────────────────────────────────────────────────────────┐ │
+│  │  http://auth.ai-platform.localhost                                  │ │
+│  └────────────────────────────────────────────────────────────────────┘ │
+│                                │                                         │
+│                                ▼                                         │
+│  ┌────────────────────────────────────────────────────────────────────┐ │
+│  │                         TRAEFIK                                     │ │
+│  │                   (Ingress Controller)                              │ │
+│  └────────────────────────────────────────────────────────────────────┘ │
+│                                │                                         │
+│                                ▼                                         │
+│  NAMESPACE: auth                                                         │
+│  ┌────────────────────────────────────────────────────────────────────┐ │
+│  │                        KEYCLOAK                                     │ │
+│  │                                                                      │ │
+│  │  ┌──────────────────┐    ┌──────────────────┐                      │ │
+│  │  │   Admin Console  │    │   User Login     │                      │ │
+│  │  │   /admin         │    │   /realms/{name} │                      │ │
+│  │  └──────────────────┘    └──────────────────┘                      │ │
+│  │                                                                      │ │
+│  │  Image: quay.io/keycloak/keycloak:26.5.1 (Quarkus-based)           │ │
+│  │  Port: 8080                                                         │ │
+│  │  Resources: 512Mi-768Mi RAM                                        │ │
+│  │                                                                      │ │
+│  └────────────────────────────────────────────────────────────────────┘ │
+│                                │                                         │
+│                                ▼                                         │
+│  NAMESPACE: storage                                                      │
+│  ┌────────────────────────────────────────────────────────────────────┐ │
+│  │                     POSTGRESQL (CNPG)                               │ │
+│  │                                                                      │ │
+│  │  Database: keycloak                                                 │ │
+│  │  User: keycloak                                                     │ │
+│  │  Service: postgresql-cluster-rw.storage.svc:5432                   │ │
+│  │                                                                      │ │
+│  └────────────────────────────────────────────────────────────────────┘ │
+│                                                                          │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+## Prerequisites
+
+Before installing Keycloak, ensure:
+
+| Component | Status | Verification |
+|-----------|--------|--------------|
+| PostgreSQL (CNPG) | ✅ Running | `kubectl get pods -n storage` |
+| Traefik | ✅ Running | `kubectl get pods -n traefik` |
+| Database `keycloak` | ✅ Created | See verification command below |
+
+```bash
+# Verify database exists
+kubectl exec -it postgresql-cluster-1 -n storage -- psql -U postgres -c "\l"
+```
+
+---
+
+## Step 1: Create Database User
+
+The database was created by `postInitSQL` in PostgreSQL values. Create a dedicated user:
+
+```bash
+kubectl exec -it postgresql-cluster-1 -n storage -- psql -U postgres -c \
+  "CREATE USER keycloak WITH PASSWORD 'keycloak-secret-pwd'; \
+   GRANT ALL PRIVILEGES ON DATABASE keycloak TO keycloak; \
+   ALTER DATABASE keycloak OWNER TO keycloak;"
+```
+
+Verify:
+```bash
+kubectl exec -it postgresql-cluster-1 -n storage -- psql -U postgres -c "\du"
+```
+
+Expected output:
+```
+                             List of roles
+ Role name  |                   Attributes                   
+------------+------------------------------------------------
+ keycloak   |                                                
+ postgres   | Superuser, Create role, Create DB, Replication
+```
+
+---
+
+## Step 2: Create Kubernetes Namespace and Secret
+
+```bash
+# Create namespace
+kubectl create namespace auth
+
+# Create secret for database credentials
+kubectl create secret generic keycloak-db-secret -n auth \
+  --from-literal=username=keycloak \
+  --from-literal=password=keycloak-secret-pwd
+
+# Verify
+kubectl get secret -n auth
+```
+
+---
+
+## Step 3: Helm Chart Selection
+
+### Why Codecentric keycloakx?
+
+| Chart | Status | Image | Recommendation |
+|-------|--------|-------|----------------|
+| **Bitnami** | Paid since Aug 2025 | bitnami/keycloak (outdated) | ❌ Avoid |
+| **Codecentric keycloakx** | Active, maintained | quay.io/keycloak/keycloak (official) | ✅ **Selected** |
+| **Keycloak Operator** | Official | Official | Complex for home lab |
+
+### Add Helm Repository
+
+```bash
+helm repo add codecentric https://codecentric.github.io/helm-charts
+helm repo update
+
+# Check available versions
+helm search repo codecentric/keycloakx --versions | head -5
+```
+
+### Explore Chart Values
+
+```bash
+# View all available options
+helm show values codecentric/keycloakx > /tmp/keycloakx-values.yaml
+
+# Key sections to review
+grep -A 30 "database:" /tmp/keycloakx-values.yaml
+grep -A 20 "ingress:" /tmp/keycloakx-values.yaml
+grep -A 10 "args:" /tmp/keycloakx-values.yaml
+```
+
+---
+
+## Step 4: Create ArgoCD Application Files
+
+### Directory Structure
+
+```
+argocd/applications/auth/keycloak/
+├── application.yaml    # ArgoCD Application manifest
+└── values.yaml         # Helm values overrides
+```
+
+### application.yaml
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: keycloak
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  sources:
+    - repoURL: https://codecentric.github.io/helm-charts
+      chart: keycloakx
+      targetRevision: 7.1.7
+      helm:
+        valueFiles:
+          - $values/argocd/applications/auth/keycloak/values.yaml
+    - repoURL: https://github.com/Z3ROX-lab/ai-security-platform
+      targetRevision: master
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: auth
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+```
+
+### values.yaml (Working Configuration)
+
+> **Important**: This configuration was refined through troubleshooting. Key learnings:
+> - Use `args` not `command` (chart has its own entrypoint)
+> - Use `--proxy-headers=xforwarded` not deprecated `--proxy=edge`
+> - Set `proxy.enabled: false` to avoid deprecated options from chart
+
+```yaml
+# Keycloak values for AI Security Platform (Home Lab)
+# Chart: codecentric/keycloakx 7.1.7
+
+replicas: 1
+
+# Args for production mode
+# NOTE: Use 'args' not 'command' - the chart has its own entrypoint
+args:
+  - "start"
+  - "--http-enabled=true"
+  - "--hostname-strict=false"
+  - "--proxy-headers=xforwarded"
+
+# Disable chart's proxy config (uses deprecated --proxy option)
+proxy:
+  enabled: false
+
+# Database configuration (external PostgreSQL via CNPG)
+database:
+  vendor: postgres
+  hostname: postgresql-cluster-rw.storage.svc
+  port: 5432
+  database: keycloak
+  username: keycloak
+  existingSecret: keycloak-db-secret
+  existingSecretKey: password
+
+# HTTP settings
+http:
+  relativePath: "/"
+
+# Health & metrics
+health:
+  enabled: true
+metrics:
+  enabled: true
+
+# Ingress via Traefik
+ingress:
+  enabled: true
+  ingressClassName: traefik
+  rules:
+    - host: auth.ai-platform.localhost
+      paths:
+        - path: /
+          pathType: Prefix
+
+# Resources for home lab
+resources:
+  requests:
+    cpu: "250m"
+    memory: "512Mi"
+  limits:
+    cpu: "1000m"
+    memory: "768Mi"
+
+# Admin credentials
+extraEnv: |
+  - name: KEYCLOAK_ADMIN
+    value: admin
+  - name: KEYCLOAK_ADMIN_PASSWORD
+    value: admin123
+  - name: KC_HOSTNAME
+    value: auth.ai-platform.localhost
+```
+
+### Troubleshooting Notes
+
+During deployment, we encountered several issues:
+
+| Issue | Error | Solution |
+|-------|-------|----------|
+| No start command | Keycloak showed help menu | Add `args: ["start", ...]` |
+| Deprecated proxy | `Unknown option: '--proxy'` | Set `proxy.enabled: false` |
+| Invalid proxy value | `Invalid value for 'KC_PROXY_HEADERS': edge` | Use `--proxy-headers=xforwarded` |
+| Duplicate env var | `duplicate entries for key KC_HTTP_ENABLED` | Remove from extraEnv (chart handles it) |
+
+---
+
+## Step 5: Deploy via GitOps
+
+```bash
+# Create directory
+mkdir -p argocd/applications/auth/keycloak
+
+# Create application.yaml and values.yaml (as shown above)
+
+# Commit and push
+git add argocd/applications/auth/keycloak/
+git commit -m "feat: add Keycloak IAM with external PostgreSQL"
+git push
+
+# Refresh root-app to detect new application
+kubectl patch application root-app -n argocd --type merge \
+  -p '{"metadata": {"annotations": {"argocd.argoproj.io/refresh": "hard"}}}'
+
+# Watch deployment
+kubectl get pods -n auth -w
+```
+
+---
+
+## Step 6: Configure Local DNS (Windows + WSL2)
+
+Since we're running in WSL2, add to Windows hosts file:
+
+**File:** `C:\Windows\System32\drivers\etc\hosts` (edit as Administrator)
+
+```
+127.0.0.1 auth.ai-platform.localhost
+127.0.0.1 chat.ai-platform.localhost
+127.0.0.1 argocd.ai-platform.localhost
+```
+
+The traffic flow:
+```
+Windows Browser → localhost:80 → K3d → Traefik → Keycloak
+```
+
+---
+
+## Step 7: Verify Deployment
+
+### Check Pods
+
+```bash
+kubectl get pods -n auth
+```
+
+Expected:
+```
+NAME                   READY   STATUS    RESTARTS   AGE
+keycloak-keycloakx-0   1/1     Running   0          5m
+```
+
+### Check Logs
+
+```bash
+kubectl logs -n auth keycloak-keycloakx-0 -f
+```
+
+Look for:
+```
+Listening on: http://0.0.0.0:8080
+```
+
+### Test Access
+
+```bash
+curl -I http://auth.ai-platform.localhost
+```
+
+---
+
+## Step 8: Access Admin Console
+
+1. Open browser: **http://auth.ai-platform.localhost**
+2. Click **Administration Console**
+3. Login:
+   - **Username:** admin
+   - **Password:** admin123
+
+---
+
+## Step 9: Create Realm
+
+1. Click **Keycloak** dropdown (top-left) → **Create realm**
+2. **Realm name:** `ai-platform`
+3. Click **Create**
+
+---
+
+## Step 10: Create Roles
+
+In realm `ai-platform`:
+
+1. Menu → **Realm roles** → **Create role**
+2. Create these 4 roles:
+
+| Role name | Description |
+|-----------|-------------|
+| `platform-admin` | Full platform access |
+| `ai-engineer` | AI/ML operations |
+| `security-auditor` | Security read-only |
+| `viewer` | Basic read-only |
+
+---
+
+## Step 11: Create OIDC Clients
+
+### Client: ArgoCD
+
+1. **Clients** → **Create client**
+
+**Step 1 - General Settings:**
+| Field | Value |
+|-------|-------|
+| Client type | OpenID Connect |
+| Client ID | `argocd` |
+
+**Step 2 - Capability config:**
+| Field | Value |
+|-------|-------|
+| Client authentication | **ON** |
+| Authorization | OFF |
+| Standard flow | ✅ |
+
+**Step 3 - Login settings:**
+| Field | Value |
+|-------|-------|
+| Root URL | `https://localhost:8080` |
+| Valid redirect URIs | `https://localhost:8080/auth/callback` |
+| Web origins | `https://localhost:8080` |
+
+After saving, go to **Credentials** tab and copy the **Client secret**.
+
+### Client: Open WebUI
+
+1. **Clients** → **Create client**
+
+| Field | Value |
+|-------|-------|
+| Client type | OpenID Connect |
+| Client ID | `open-webui` |
+| Client authentication | **ON** |
+| Root URL | `http://chat.ai-platform.localhost` |
+| Valid redirect URIs | `http://chat.ai-platform.localhost/*` |
+| Web origins | `http://chat.ai-platform.localhost` |
+
+---
+
+## Step 12: Create Test User
+
+1. **Users** → **Create new user**
+
+| Field | Value |
+|-------|-------|
+| Username | `testuser` |
+| Email | `test@ai-platform.local` |
+| Email verified | **ON** |
+| First name | Test |
+| Last name | User |
+
+2. Click **Create**
+
+3. **Credentials** tab → **Set password**
+   - Password: `testpassword`
+   - Temporary: **OFF**
+
+4. **Role mapping** tab → **Assign role**
+   - Select `ai-engineer`
+   - Click **Assign**
+
+---
+
+## Final Configuration Summary
+
+| Item | Value |
+|------|-------|
+| **Realm** | ai-platform |
+| **Admin URL** | http://auth.ai-platform.localhost |
+| **Admin User** | admin / admin123 |
+| **OIDC Issuer** | http://auth.ai-platform.localhost/realms/ai-platform |
+| **Roles** | platform-admin, ai-engineer, security-auditor, viewer |
+| **Clients** | argocd, open-webui |
+| **Test User** | testuser / testpassword (role: ai-engineer) |
+
+---
+
+## Useful Commands
+
+```bash
+# Get Keycloak pod status
+kubectl get pods -n auth
+
+# View logs
+kubectl logs -n auth keycloak-keycloakx-0 -f
+
+# Restart Keycloak
+kubectl rollout restart statefulset keycloak-keycloakx -n auth
+
+# Get all Keycloak resources
+kubectl get all -n auth
+
+# Describe pod for events
+kubectl describe pod keycloak-keycloakx-0 -n auth
+
+# Check ingress
+kubectl get ingress -n auth
+```
+
+---
+
+## Troubleshooting
+
+### CrashLoopBackOff
+
+```bash
+# Check logs for errors
+kubectl logs -n auth keycloak-keycloakx-0 --previous
+
+# Common causes:
+# - Database connection failed
+# - Wrong start command/args
+# - Invalid environment variables
+```
+
+### Database connection failed
+
+```bash
+# Verify secret exists
+kubectl get secret keycloak-db-secret -n auth -o yaml
+
+# Test DB connection
+kubectl exec -it postgresql-cluster-1 -n storage -- \
+  psql -U keycloak -d keycloak -c "SELECT 1"
+```
+
+### Ingress not working
+
+```bash
+# Check ingress resource
+kubectl get ingress -n auth
+
+# Check Traefik logs
+kubectl logs -n traefik -l app.kubernetes.io/name=traefik --tail=50
+
+# Verify hosts file (Windows)
+type C:\Windows\System32\drivers\etc\hosts
+```
+
+---
+
+## Security Considerations
+
+### For Production
+
+| Current (Home Lab) | Production Recommendation |
+|--------------------|---------------------------|
+| Admin password in values.yaml | Use Sealed Secrets or External Secrets |
+| HTTP enabled | HTTPS only with valid certificates |
+| Single replica | 2+ replicas with HA |
+| No backup | Regular Realm exports + DB backups |
+
+### Next Steps
+
+- [ ] Integrate ArgoCD with Keycloak OIDC
+- [ ] Configure Grafana OIDC
+- [ ] Setup Open WebUI authentication
+- [ ] Implement Sealed Secrets for credentials
