@@ -10,6 +10,10 @@ args:
   - "--hostname-strict=false"
   - "--proxy-headers=xforwarded"
 
+# Disable chart's proxy config (uses deprecated option)
+proxy:
+  enabled: false
+
 # Database configuration (external PostgreSQL via CNPG)
 database:
   vendor: postgres
@@ -30,10 +34,16 @@ health:
 metrics:
   enabled: true
 
-# Ingress via Traefik
+# Ingress via Traefik with TLS
 ingress:
   enabled: true
   ingressClassName: traefik
+  annotations:
+    cert-manager.io/cluster-issuer: ai-platform-ca-issuer
+  tls:
+    - hosts:
+        - auth.ai-platform.localhost
+      secretName: keycloak-tls
   rules:
     - host: auth.ai-platform.localhost
       paths:
