@@ -62,7 +62,7 @@ Enterprise-grade AI/ML platform with comprehensive security coverage, built on K
 | 1 | Infrastructure & GitOps | K3d, Terraform, ArgoCD | ✅ Done |
 | 2 | Storage Layer | PostgreSQL (CNPG) | ✅ Done |
 | 3 | IAM & Ingress | Traefik, Keycloak | ✅ Done |
-| 4 | K8s Security Baseline | NetworkPolicies, PSS, RBAC | 🔲 Planned |
+| 4 | K8s Security Baseline | NetworkPolicies, PSS, RBAC | ✅ Done |
 | 5 | AI Inference | Ollama, Mistral 7B | 🔲 Planned |
 | 6 | RAG Pipeline | Qdrant, Embedding Service | 🔲 Planned |
 | 7 | AI Guardrails | Rebuff, LLM Guard, NeMo | 🔲 Planned |
