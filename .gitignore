@@ -19,7 +19,11 @@ kubeconfig.yaml
 # Secrets (never commit!)
 *.pem
 *.key
-*secret*
+*secret*.yaml
+*secret*.yml
+!*sealed-secret*.yaml
+!*sealed-secret*.yml
+!*sealed-secrets*
 !*secret*.example
 .env
 .env.*
