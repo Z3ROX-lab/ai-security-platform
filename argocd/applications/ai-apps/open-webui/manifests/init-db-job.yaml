@@ -1,0 +1,36 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: openwebui-init-db
+  namespace: ai-apps
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: init-db
+          image: postgres:16
+          env:
+            - name: PGHOST
+              value: postgresql-cluster-rw.storage.svc
+            - name: PGUSER
+              value: postgres
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgresql-cluster-superuser
+                  key: password
+          command:
+            - /bin/sh
+            - -c
+            - |
+              psql -tc "SELECT 1 FROM pg_database WHERE datname = 'openwebui'" | grep -q 1 || psql -c "CREATE DATABASE openwebui;"
+              psql -tc "SELECT 1 FROM pg_roles WHERE rolname = 'openwebui'" | grep -q 1 || psql -c "CREATE USER openwebui WITH PASSWORD 'openwebui123';"
+              psql -c "GRANT ALL PRIVILEGES ON DATABASE openwebui TO openwebui;"
+              psql -c "ALTER DATABASE openwebui OWNER TO openwebui;"
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
