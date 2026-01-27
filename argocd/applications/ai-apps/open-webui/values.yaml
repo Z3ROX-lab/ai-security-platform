@@ -1,19 +1,12 @@
-# Open WebUI values for AI Security Platform
-# Based on ADR-010: AI Chat Interface
-
-# Ollama connection (internal service)
 ollamaUrls:
   - "http://ollama.ai-inference.svc:11434"
 
-# Disable bundled Ollama (we have our own)
 ollama:
   enabled: false
 
-# PostgreSQL (external - CNPG)
 postgresql:
   enabled: false
 
-# Ingress via Traefik with TLS
 ingress:
   enabled: true
   class: traefik
@@ -22,22 +15,19 @@ ingress:
   host: chat.ai-platform.localhost
   tls: true
 
-# Persistence for uploads
 persistence:
   enabled: true
   size: 5Gi
   storageClass: local-path
 
-# Resources
 resources:
   requests:
-    memory: "256Mi"
-    cpu: "100m"
-  limits:
     memory: "512Mi"
-    cpu: "500m"
+    cpu: "200m"
+  limits:
+    memory: "2Gi"
+    cpu: "1000m"
 
-# Environment
 extraEnvVars:
   - name: WEBUI_NAME
     value: "AI Security Platform"
