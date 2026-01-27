@@ -27,9 +27,26 @@ spec:
             - /bin/sh
             - -c
             - |
+              set -e
+              echo "Waiting for PostgreSQL to be ready..."
+              until pg_isready -h $PGHOST -p 5432 -U $PGUSER; do
+                echo "PostgreSQL not ready, waiting..."
+                sleep 2
+              done
+              echo "PostgreSQL is ready!"
+              
               echo "Creating database openwebui..."
               psql -tc "SELECT 1 FROM pg_database WHERE datname = 'openwebui'" | grep -q 1 || psql -c "CREATE DATABASE openwebui;"
+              
+              echo "Creating user openwebui..."
               psql -tc "SELECT 1 FROM pg_roles WHERE rolname = 'openwebui'" | grep -q 1 || psql -c "CREATE USER openwebui WITH PASSWORD 'openwebui123';"
+              
+              echo "Granting privileges..."
               psql -c "GRANT ALL PRIVILEGES ON DATABASE openwebui TO openwebui;"
               psql -c "ALTER DATABASE openwebui OWNER TO openwebui;"
-              echo "Database openwebui ready!"
+              
+              echo "Verifying..."
+              psql -tc "SELECT 1 FROM pg_roles WHERE rolname = 'openwebui'" | grep -q 1 && echo "User openwebui exists!"
+              psql -tc "SELECT 1 FROM pg_database WHERE datname = 'openwebui'" | grep -q 1 && echo "Database openwebui exists!"
+              
+              echo "Database setup complete!"
