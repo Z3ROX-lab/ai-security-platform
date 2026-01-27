@@ -4,7 +4,7 @@
 **Accepted**
 
 ## Date
-2025-01-21
+2025-01-21 (Updated: 2025-01-27)
 
 ## Context
 
@@ -348,7 +348,14 @@ metadata:
 ## Principle 9: Multi-Source Applications (ArgoCD 2.6+)
 
 ### When to Use
-When you need values from your repo + chart from external repo.
+When you need:
+- Helm chart from external repo
+- Values from your repo
+- **Extra manifests** not provided by the chart (secrets, init jobs, etc.)
+
+### Use Case 1: Chart + Values (Simple)
+
+When the Helm chart provides everything you need:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -363,11 +370,211 @@ spec:
       targetRevision: 24.0.0
       helm:
         valueFiles:
-          - $values/values/keycloak/values.yaml  # Reference to source 2
+          - $values/values/keycloak/values.yaml
     # Source 2: Your values repo
     - repoURL: https://github.com/Z3ROX-lab/ai-security-platform
       targetRevision: main
-      ref: values                                 # Named reference
+      ref: values
+```
+
+### Use Case 2: Chart + Values + Extra Manifests
+
+When the Helm chart doesn't provide everything you need (secrets, init jobs, etc.):
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: open-webui
+spec:
+  sources:
+    # Source 1: Official Helm chart
+    - repoURL: https://helm.openwebui.com
+      chart: open-webui
+      targetRevision: 6.12.0
+      helm:
+        valueFiles:
+          - $values/argocd/applications/ai-apps/open-webui/values.yaml
+    # Source 2: Your values (referenced by $values)
+    - repoURL: https://github.com/Z3ROX-lab/ai-security-platform
+      targetRevision: master
+      ref: values
+    # Source 3: Extra manifests (secrets, init jobs, etc.)
+    - repoURL: https://github.com/Z3ROX-lab/ai-security-platform
+      targetRevision: master
+      path: argocd/applications/ai-apps/open-webui/manifests
+```
+
+### Directory Structure with Manifests
+
+```
+argocd/applications/ai-apps/open-webui/
+├── application.yaml      # ArgoCD Application (multi-source)
+├── values.yaml           # Helm values (customization)
+└── manifests/            # Extra resources NOT provided by chart
+    ├── secret.yaml       # DB credentials
+    └── init-db-job.yaml  # Create database (PreSync hook)
+```
+
+### What Goes Where
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    MULTI-SOURCE ARCHITECTURE                             │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  SOURCE 1: Helm Chart (External)                                        │
+│  ════════════════════════════════                                        │
+│  repoURL: https://helm.openwebui.com                                    │
+│  chart: open-webui                                                       │
+│                                                                          │
+│  Contains:                                                               │
+│  • Deployment                                                           │
+│  • Service                                                              │
+│  • Ingress                                                              │
+│  • ServiceAccount                                                       │
+│  • ConfigMaps (chart defaults)                                          │
+│                                                                          │
+│  ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│  SOURCE 2: Values (Your Repo)                                           │
+│  ════════════════════════════                                            │
+│  ref: values                                                             │
+│  file: values.yaml                                                       │
+│                                                                          │
+│  Contains:                                                               │
+│  • Resource limits                                                      │
+│  • Environment variables                                                │
+│  • Ingress configuration                                                │
+│  • Feature toggles                                                      │
+│                                                                          │
+│  ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│  SOURCE 3: Manifests (Your Repo)                                        │
+│  ════════════════════════════════                                        │
+│  path: .../manifests/                                                   │
+│                                                                          │
+│  Contains (what chart DOESN'T provide):                                 │
+│  • Secrets (DB credentials, API keys)                                   │
+│  • Init Jobs (database creation, migrations)                            │
+│  • Extra ConfigMaps (custom config)                                     │
+│  • CRDs not included in chart                                           │
+│  • NetworkPolicies specific to your setup                               │
+│                                                                          │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### Decision Table: When to Use Manifests
+
+| Scenario | Solution |
+|----------|----------|
+| Chart provides everything | Chart + Values only (2 sources) |
+| Need custom secrets | Add `manifests/secret.yaml` |
+| Need to init external DB | Add `manifests/init-db-job.yaml` |
+| Need extra ConfigMaps | Add `manifests/configmap.yaml` |
+| Need CRDs not in chart | Add `manifests/crd.yaml` |
+| Need custom NetworkPolicies | Add `manifests/networkpolicy.yaml` |
+
+### Sync Order with Hooks
+
+Use ArgoCD hooks to control execution order:
+
+```yaml
+# manifests/init-db-job.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: openwebui-init-db
+  annotations:
+    argocd.argoproj.io/hook: PreSync           # Run BEFORE chart sync
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+spec:
+  template:
+    spec:
+      containers:
+        - name: init-db
+          image: postgres:16
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              psql -c "CREATE DATABASE IF NOT EXISTS mydb;"
+```
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    SYNC ORDER WITH HOOKS                                 │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  1. PreSync Hooks                                                       │
+│     └── init-db-job.yaml → Create database in PostgreSQL               │
+│                                                                          │
+│  2. Main Sync                                                           │
+│     ├── Helm Chart → Deployment, Service, Ingress                      │
+│     ├── values.yaml → Applied to chart                                 │
+│     └── manifests/ (non-hook) → Secrets, ConfigMaps                    │
+│                                                                          │
+│  3. PostSync Hooks                                                      │
+│     └── smoke-test-job.yaml → Verify deployment works                  │
+│                                                                          │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### Hook Delete Policies
+
+| Policy | Behavior |
+|--------|----------|
+| `HookSucceeded` | Delete after successful completion |
+| `HookFailed` | Delete after failure |
+| `BeforeHookCreation` | Delete before new hook runs |
+
+### Real Example: Open WebUI with PostgreSQL Init
+
+```yaml
+# manifests/secret.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: openwebui-db-secret
+  namespace: ai-apps
+type: Opaque
+stringData:
+  password: openwebui123
+---
+# manifests/init-db-job.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: openwebui-init-db
+  namespace: ai-apps
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: init-db
+          image: postgres:16
+          env:
+            - name: PGHOST
+              value: postgresql-cluster-rw.storage.svc
+            - name: PGUSER
+              value: postgres
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgresql-cluster-superuser
+                  key: password
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              psql -tc "SELECT 1 FROM pg_database WHERE datname = 'openwebui'" | grep -q 1 || \
+              psql -c "CREATE DATABASE openwebui;"
+              psql -tc "SELECT 1 FROM pg_roles WHERE rolname = 'openwebui'" | grep -q 1 || \
+              psql -c "CREATE USER openwebui WITH PASSWORD 'openwebui123';"
+              psql -c "GRANT ALL PRIVILEGES ON DATABASE openwebui TO openwebui;"
+              psql -c "ALTER DATABASE openwebui OWNER TO openwebui;"
 ```
 
 ---
@@ -382,6 +589,8 @@ spec:
 | Use Sealed Secrets for credentials | Commit plain secrets |
 | Use App-of-Apps pattern | Deploy apps individually |
 | Manual sync for stateful/infra | Auto-sync everything blindly |
+| Use multi-source for extra manifests | Duplicate chart resources |
+| Use hooks for init jobs | Run manual kubectl commands |
 
 ---
 
@@ -393,6 +602,7 @@ spec:
 - Clear separation: "what we customize" vs "what we use"
 - Easier auditing and compliance
 - Faster onboarding for new team members
+- Reproducible deployments with hooks
 
 ### Negative
 - Dependency on external Helm repos (mitigated by ChartMuseum mirror if needed)
@@ -406,6 +616,7 @@ spec:
 | External repo unavailable | Cache charts in local registry / ChartMuseum |
 | Breaking changes in chart | Pin versions, test before updating |
 | Helm values schema changes | Read release notes, use `helm diff` |
+| Hook job fails | Use `restartPolicy: OnFailure`, check logs |
 
 ---
 
@@ -413,6 +624,8 @@ spec:
 
 - [ArgoCD Best Practices](https://argo-cd.readthedocs.io/en/stable/user-guide/best_practices/)
 - [ArgoCD Application Specification](https://argo-cd.readthedocs.io/en/stable/user-guide/application-specification/)
+- [ArgoCD Multi-Source Applications](https://argo-cd.readthedocs.io/en/stable/user-guide/multiple_sources/)
+- [ArgoCD Resource Hooks](https://argo-cd.readthedocs.io/en/stable/user-guide/resource_hooks/)
 - [Helm Charts Best Practices](https://helm.sh/docs/chart_best_practices/)
 - [GitOps Principles](https://opengitops.dev/)
 - [Sealed Secrets](https://sealed-secrets.netlify.app/)
