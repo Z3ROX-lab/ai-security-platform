@@ -5,10 +5,8 @@ metadata:
   namespace: ai-apps
   annotations:
     argocd.argoproj.io/sync-wave: "-2"
-    argocd.argoproj.io/hook: Sync
-    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 spec:
-  ttlSecondsAfterFinished: 60
+  ttlSecondsAfterFinished: 120
   template:
     spec:
       restartPolicy: OnFailure
@@ -29,8 +27,6 @@ spec:
             - /bin/sh
             - -c
             - |
-              echo "Waiting for secret to be ready..."
-              sleep 5
               echo "Creating database openwebui..."
               psql -tc "SELECT 1 FROM pg_database WHERE datname = 'openwebui'" | grep -q 1 || psql -c "CREATE DATABASE openwebui;"
               psql -tc "SELECT 1 FROM pg_roles WHERE rolname = 'openwebui'" | grep -q 1 || psql -c "CREATE USER openwebui WITH PASSWORD 'openwebui123';"
