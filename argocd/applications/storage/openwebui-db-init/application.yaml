@@ -1,0 +1,18 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: openwebui-db-init
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/Z3ROX-lab/ai-security-platform
+    targetRevision: master
+    path: argocd/applications/storage/openwebui-db-init/manifests
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: storage
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
