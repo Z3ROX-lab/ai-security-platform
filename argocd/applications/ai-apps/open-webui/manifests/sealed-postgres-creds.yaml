@@ -1,0 +1,15 @@
+---
+apiVersion: bitnami.com/v1alpha1
+kind: SealedSecret
+metadata:
+  creationTimestamp: null
+  name: postgres-superuser-creds
+  namespace: ai-apps
+spec:
+  encryptedData:
+    password: AgCbKGfgU7j0a37CUFg05Df2GheP+SGRexHfbVLr7Eemql98f0C7diQnpLe6dAZribZXuWmRGf5qA/jS5oWxdhZGXlxIyyPY16HHxwIY+Z3+kxTh7OIFLNNZWS1PWYBhe+Wb2bjkscIiJNUxILJF+3MGi2VNnwZuAZpWI6ozBUA/wcRHsp/SZVoRVK/bjIcanlN86Yb+CVpCZ1bDAjlliImaNRAiakSZVqCFdH+YGJ5672yOMQ5NZxSVN6EuaGRCFY57rJeCKcas/ZTvbyahvPL4ekCB2U1+ZLntpgDAd2s+8Ec0Xe9pgs3yTINm3IW6izsyuGJi/x5+82hIC8XVt1zAPOAx/IKvkM6mG96WJfy51BnQSt0sHEsWh5VhkOJrvrgrnRzxSTGEFaVNAmsx9Siu4K6Eoi55MjtKw7q9eTt0p78ErE6UjCYLCFZZ13zwCqRz9vL5BMsS6mM73adsO0lezBjnoiOXcGcsMrBlfAX1ItCmQ4aXXlLS1sjnw6LgJDaqA0bLvNOsUwt//8A9T2Pn8H2Im+Ae3EKNAnvAGpPppMRj9iwMBGNlXG4Hrx9RJSbhza0ewmo4JhZAaJ4hBA/uX6FjI3f3T/9ibrqgeXATkfKk2ZB7EQhzTsJKoe95t2KyPrlvNAByj/csaod17Qg91HnUrGeaxJIjlZnCQXXZZzxH33aUtB4sRGhiJxQviNnzOH3+RiqXAsV6pROzJGRclIh/MOk3SnTe5ETh0WTHb4R0YoPz8NpOT0Aso5usPgrPOwqn6f7ylpe4VFX2JZJG
+  template:
+    metadata:
+      creationTimestamp: null
+      name: postgres-superuser-creds
+      namespace: ai-apps
