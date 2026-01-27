@@ -4,24 +4,17 @@ metadata:
   name: openwebui-init-db
   namespace: ai-apps
   annotations:
-    argocd.argoproj.io/hook: PreSync
-    argocd.argoproj.io/hook-delete-policy: HookSucceeded
-    argocd.argoproj.io/sync-wave: "-1"
+    argocd.argoproj.io/sync-wave: "-2"
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 spec:
+  ttlSecondsAfterFinished: 60
   template:
     spec:
       restartPolicy: OnFailure
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 999
       containers:
         - name: init-db
           image: postgres:16
-          securityContext:
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop:
-                - ALL
           env:
             - name: PGHOST
               value: postgresql-cluster-rw.storage.svc
@@ -36,6 +29,9 @@ spec:
             - /bin/sh
             - -c
             - |
+              echo "Waiting for secret to be ready..."
+              sleep 5
+              echo "Creating database openwebui..."
               psql -tc "SELECT 1 FROM pg_database WHERE datname = 'openwebui'" | grep -q 1 || psql -c "CREATE DATABASE openwebui;"
               psql -tc "SELECT 1 FROM pg_roles WHERE rolname = 'openwebui'" | grep -q 1 || psql -c "CREATE USER openwebui WITH PASSWORD 'openwebui123';"
               psql -c "GRANT ALL PRIVILEGES ON DATABASE openwebui TO openwebui;"
