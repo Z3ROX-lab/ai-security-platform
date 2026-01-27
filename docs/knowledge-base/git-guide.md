@@ -117,9 +117,102 @@ git config --global credential.helper store
 
 ---
 
-## 4. Basic Commands
+## 4. Check Your Configuration
 
-### 4.1 Check Repository Status
+### 4.1 Verify Remote Configuration
+```bash
+# See the remote URL (fetch and push)
+git remote -v
+```
+
+**Example output (HTTPS)**:
+```
+origin  https://Z3ROX-lab@github.com/Z3ROX-lab/ai-security-platform.git (fetch)
+origin  https://Z3ROX-lab@github.com/Z3ROX-lab/ai-security-platform.git (push)
+```
+
+**Example output (SSH)**:
+```
+origin  git@github.com:Z3ROX-lab/ai-security-platform.git (fetch)
+origin  git@github.com:Z3ROX-lab/ai-security-platform.git (push)
+```
+
+### 4.2 Verify Git Configuration
+```bash
+# View all Git settings
+cat ~/.gitconfig
+
+# Or
+git config --list
+```
+
+### 4.3 Authentication Methods Comparison
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    HTTPS vs SSH Authentication                           │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  HTTPS + Personal Access Token (PAT)                                    │
+│  ═══════════════════════════════════                                     │
+│                                                                          │
+│  Remote URL: https://github.com/USER/REPO.git                           │
+│              https://USER@github.com/USER/REPO.git                      │
+│                                                                          │
+│  Authentication:                                                         │
+│  • PAT stored in credential manager (Windows)                           │
+│  • Or in ~/.git-credentials (Linux)                                     │
+│  • Or entered at each push                                              │
+│                                                                          │
+│  Pros:                                                                   │
+│  ✅ Works through firewalls (port 443)                                  │
+│  ✅ Easy to setup                                                        │
+│  ✅ Works with VS Code out of the box                                   │
+│                                                                          │
+│  Cons:                                                                   │
+│  ⚠️ Token expires (needs renewal)                                       │
+│  ⚠️ Token can be leaked if stored insecurely                            │
+│                                                                          │
+│  ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│  SSH Key                                                                 │
+│  ═══════                                                                 │
+│                                                                          │
+│  Remote URL: git@github.com:USER/REPO.git                               │
+│                                                                          │
+│  Authentication:                                                         │
+│  • SSH key pair (~/.ssh/id_ed25519 or id_rsa)                          │
+│  • Public key added to GitHub Settings → SSH Keys                       │
+│                                                                          │
+│  Pros:                                                                   │
+│  ✅ More secure (no token to leak)                                      │
+│  ✅ Never expires                                                        │
+│  ✅ No password prompts ever                                            │
+│                                                                          │
+│  Cons:                                                                   │
+│  ⚠️ May be blocked by corporate firewalls (port 22)                     │
+│  ⚠️ Slightly more complex initial setup                                 │
+│                                                                          │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### 4.4 Switch Between HTTPS and SSH
+```bash
+# View current remote
+git remote -v
+
+# Change to SSH
+git remote set-url origin git@github.com:USER/REPO.git
+
+# Change to HTTPS
+git remote set-url origin https://github.com/USER/REPO.git
+```
+
+---
+
+## 5. Basic Commands
+
+### 5.1 Check Repository Status
 ```bash
 # See modified, added, deleted files
 git status
@@ -135,7 +228,7 @@ git status -s
 - ` M` : Modified file (not staged)
 - `D ` : Deleted file
 
-### 4.2 Add Files
+### 5.2 Add Files
 ```bash
 # Add specific file
 git add myfile.txt
@@ -153,7 +246,7 @@ git add -u
 git add -A
 ```
 
-### 4.3 Commit
+### 5.3 Commit
 ```bash
 # Commit with inline message
 git commit -m "My commit message"
@@ -169,7 +262,7 @@ Longer description of the change.
 git commit -am "Message"
 ```
 
-### 4.4 Push to GitHub
+### 5.4 Push to GitHub
 ```bash
 # Push current branch
 git push
@@ -183,7 +276,7 @@ git push origin my-branch
 git push -u origin my-branch
 ```
 
-### 4.5 Pull Changes
+### 5.5 Pull Changes
 ```bash
 # Fetch + merge
 git pull
@@ -194,9 +287,9 @@ git fetch
 
 ---
 
-## 5. View History
+## 6. View History
 
-### 5.1 Logs
+### 6.1 Logs
 ```bash
 # Full history
 git log
@@ -214,7 +307,7 @@ git log -5
 git log -- myfile.txt
 ```
 
-### 5.2 View Differences
+### 6.2 View Differences
 ```bash
 # Unstaged differences
 git diff
@@ -231,9 +324,9 @@ git diff myfile.txt
 
 ---
 
-## 6. Branches
+## 7. Branches
 
-### 6.1 Why Use Branches?
+### 7.1 Why Use Branches?
 ```
 main/master ─────────────────────────────────────▶ Stable production
                     │
@@ -242,7 +335,7 @@ main/master ──────────────────────�
                               └── Merge when ready
 ```
 
-### 6.2 Branch Commands
+### 7.2 Branch Commands
 ```bash
 # List local branches
 git branch
@@ -270,7 +363,7 @@ git branch -d my-branch
 git branch -D my-branch
 ```
 
-### 6.3 Branch Workflow
+### 7.3 Branch Workflow
 ```bash
 # 1. Create feature branch
 git checkout -b feature/phase-02
@@ -297,9 +390,9 @@ git branch -d feature/phase-02
 
 ---
 
-## 7. Undo Changes
+## 8. Undo Changes
 
-### 7.1 Before Commit
+### 8.1 Before Commit
 ```bash
 # Discard changes to a file (unstaged)
 git restore myfile.txt
@@ -308,7 +401,7 @@ git restore myfile.txt
 git restore --staged myfile.txt
 ```
 
-### 7.2 After Commit
+### 8.2 After Commit
 ```bash
 # Modify last commit (message or content)
 git commit --amend -m "New message"
@@ -324,9 +417,9 @@ git reset --hard HEAD~1
 
 ---
 
-## 8. Commit Best Practices
+## 9. Commit Best Practices
 
-### 8.1 Message Format
+### 9.1 Message Format
 ```
 <type>: <short description>
 
@@ -344,7 +437,7 @@ git reset --hard HEAD~1
 | `test` | Add/modify tests |
 | `chore` | Maintenance, dependencies |
 
-### 8.2 Good Message Examples
+### 9.2 Good Message Examples
 ```bash
 # ✅ Good messages
 git commit -m "feat: Add Keycloak Helm chart configuration"
@@ -357,7 +450,7 @@ git commit -m "update"
 git commit -m "wip"
 ```
 
-### 8.3 Golden Rules
+### 9.3 Golden Rules
 
 1. **Atomic commits**: One commit = one logical change
 2. **Clear messages**: Someone should understand without seeing the code
@@ -366,9 +459,9 @@ git commit -m "wip"
 
 ---
 
-## 9. The .gitignore File
+## 10. The .gitignore File
 
-### 9.1 Syntax
+### 10.1 Syntax
 ```gitignore
 # Comment
 file.txt             # Ignore specific file
@@ -378,7 +471,7 @@ build/               # Ignore all build folders
 !important.log       # Exception — don't ignore this file
 ```
 
-### 9.2 Our .gitignore (AI Security Platform)
+### 10.2 Our .gitignore (AI Security Platform)
 ```gitignore
 # Terraform
 *.tfstate
@@ -406,9 +499,9 @@ kubeconfig
 
 ---
 
-## 10. VS Code Integration
+## 11. VS Code Integration
 
-### 10.1 Why VS Code?
+### 11.1 Why VS Code?
 
 | Benefit | Detail |
 |---------|--------|
@@ -418,19 +511,19 @@ kubeconfig
 | **Free** | Microsoft, actively maintained |
 | **Industry standard** | 70%+ of developers use it |
 
-### 10.2 Setup
+### 11.2 Install VS Code
 
-1. **Install VS Code on Windows**: https://code.visualstudio.com/
+1. **Download and install on Windows**: https://code.visualstudio.com/
 
-2. **Install essential extensions**:
-   - Remote - WSL
-   - GitLens
-   - Kubernetes
-   - HashiCorp Terraform
-   - YAML
-   - Markdown Preview Enhanced
+2. **Install essential extensions** (in VS Code):
+   - **Remote - WSL** (required for WSL2)
+   - **GitLens** (enhanced Git features)
+   - **Kubernetes**
+   - **HashiCorp Terraform**
+   - **YAML**
+   - **Markdown Preview Enhanced**
 
-3. **Open project from WSL**:
+3. **Open project from WSL terminal**:
 ```bash
 cd ~/work/ai-security-platform
 code .
@@ -438,33 +531,277 @@ code .
 
 VS Code opens **connected to WSL** — you edit directly in Ubuntu!
 
-### 10.3 VS Code Git Features
+### 11.3 VS Code + Git Architecture
 
-| Feature | How to access |
-|---------|---------------|
-| Source Control | Ctrl+Shift+G |
-| View changes | Click file in Source Control |
-| Stage file | Click + next to file |
-| Commit | Type message + Ctrl+Enter |
-| Push/Pull | Click ... menu or status bar |
-| View history | GitLens extension |
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    VS CODE + WSL2 + GIT FLOW                            │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  WINDOWS                           WSL2 (Ubuntu)                        │
+│  ═══════                           ══════════════                        │
+│                                                                          │
+│  ┌──────────────┐                 ┌──────────────────────────────────┐  │
+│  │   VS Code    │ ◄─────────────► │  ~/work/ai-security-platform/    │  │
+│  │   (GUI)      │   Remote WSL    │                                  │  │
+│  │              │   Extension     │  ├── .git/                       │  │
+│  │  Source      │                 │  ├── argocd/                     │  │
+│  │  Control     │                 │  ├── docs/                       │  │
+│  │  Panel       │                 │  └── ...                         │  │
+│  └──────────────┘                 └──────────────────────────────────┘  │
+│        │                                       │                         │
+│        │                                       │                         │
+│        │                                       ▼                         │
+│        │                          ┌──────────────────────────────────┐  │
+│        │                          │  Git (installed in Ubuntu)       │  │
+│        │                          │                                  │  │
+│        │                          │  ~/.gitconfig                    │  │
+│        │                          │  ~/.git-credentials              │  │
+│        └─────────────────────────►│                                  │  │
+│           Uses Git from WSL       └──────────────────────────────────┘  │
+│                                                │                         │
+│                                                │ HTTPS or SSH            │
+│                                                ▼                         │
+│                                   ┌──────────────────────────────────┐  │
+│                                   │         GitHub.com               │  │
+│                                   └──────────────────────────────────┘  │
+│                                                                          │
+└─────────────────────────────────────────────────────────────────────────┘
+```
 
-### 10.4 Useful Shortcuts
+### 11.4 Source Control Panel
+
+The Source Control panel (`Ctrl+Shift+G`) is your Git GUI:
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    VS CODE SOURCE CONTROL                                │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  ┌─────────────────────────────────────────────────────────────────┐    │
+│  │  SOURCE CONTROL                                    ↻  ...  ─    │    │
+│  ├─────────────────────────────────────────────────────────────────┤    │
+│  │                                                                  │    │
+│  │  Message (Ctrl+Enter to commit)                                 │    │
+│  │  ┌─────────────────────────────────────────────────────────┐   │    │
+│  │  │ feat: add Open WebUI deployment                          │   │    │
+│  │  └─────────────────────────────────────────────────────────┘   │    │
+│  │                                                    [✓ Commit]   │    │
+│  │                                                                  │    │
+│  │  Changes (3)                                              ▼     │    │
+│  │  ┌─────────────────────────────────────────────────────────┐   │    │
+│  │  │  M  argocd/applications/ai-apps/open-webui/values.yaml  │ + │    │
+│  │  │  A  argocd/applications/ai-apps/open-webui/app.yaml     │ + │    │
+│  │  │  M  docs/git-guide.md                                   │ + │    │
+│  │  └─────────────────────────────────────────────────────────┘   │    │
+│  │                                                                  │    │
+│  │  Staged Changes (1)                                       ▼     │    │
+│  │  ┌─────────────────────────────────────────────────────────┐   │    │
+│  │  │  A  README.md                                           │ - │    │
+│  │  └─────────────────────────────────────────────────────────┘   │    │
+│  │                                                                  │    │
+│  └─────────────────────────────────────────────────────────────────┘    │
+│                                                                          │
+│  Legend:                                                                │
+│  • M = Modified                                                         │
+│  • A = Added (new file)                                                 │
+│  • D = Deleted                                                          │
+│  • + = Stage this file (git add)                                       │
+│  • - = Unstage this file (git restore --staged)                        │
+│                                                                          │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### 11.5 Complete Git Workflow in VS Code
+
+#### Step 1: Open Source Control
+- Press `Ctrl+Shift+G`
+- Or click the branch icon in the left sidebar
+
+#### Step 2: View Changes
+- Click on any file to see the diff
+- Red = deleted lines
+- Green = added lines
+
+#### Step 3: Stage Files
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│  Option A: Stage individual files                                        │
+│  ─────────────────────────────────                                       │
+│  Hover over file → Click [+] button                                     │
+│                                                                          │
+│  Option B: Stage all files                                              │
+│  ─────────────────────────────                                           │
+│  Hover over "Changes" header → Click [+] button                         │
+│                                                                          │
+│  Option C: Keyboard shortcut                                            │
+│  ───────────────────────────                                             │
+│  Select file → Press Ctrl+Shift+G then S                                │
+│                                                                          │
+│  Equivalent command: git add <file>                                     │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Step 4: Commit
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│  1. Type commit message in the text box                                 │
+│                                                                          │
+│     ┌─────────────────────────────────────────────────────────────┐    │
+│     │ feat: add Open WebUI deployment                              │    │
+│     └─────────────────────────────────────────────────────────────┘    │
+│                                                                          │
+│  2. Press Ctrl+Enter                                                    │
+│     Or click the [✓ Commit] button                                      │
+│                                                                          │
+│  Equivalent command: git commit -m "feat: add Open WebUI deployment"   │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Step 5: Push
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│  Option A: Status bar                                                   │
+│  ────────────────────                                                    │
+│  Click the sync icon (↑↓) in the bottom status bar                     │
+│                                                                          │
+│  Option B: Menu                                                         │
+│  ───────────                                                             │
+│  Click [...] in Source Control → Push                                  │
+│                                                                          │
+│  Option C: Command Palette                                              │
+│  ─────────────────────────                                               │
+│  Ctrl+Shift+P → Type "Git: Push" → Enter                               │
+│                                                                          │
+│  Equivalent command: git push                                           │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### 11.6 VS Code Git Commands Summary
+
+| Action | VS Code | Terminal Equivalent |
+|--------|---------|---------------------|
+| Open Source Control | `Ctrl+Shift+G` | - |
+| View diff | Click file | `git diff <file>` |
+| Stage file | Click `+` | `git add <file>` |
+| Stage all | Click `+` on Changes | `git add .` |
+| Unstage file | Click `-` | `git restore --staged <file>` |
+| Commit | Type message + `Ctrl+Enter` | `git commit -m "msg"` |
+| Push | Click sync icon or `...` → Push | `git push` |
+| Pull | Click sync icon or `...` → Pull | `git pull` |
+| View history | GitLens extension | `git log` |
+| Switch branch | Click branch name in status bar | `git checkout <branch>` |
+| Create branch | Click branch → Create new branch | `git checkout -b <name>` |
+
+### 11.7 Status Bar Indicators
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│  VS CODE STATUS BAR (bottom left)                                       │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  ┌──────────────────────────────────────────────────────────────────┐   │
+│  │  ⎇ master  ↑1 ↓0  ⚠ 0  ✗ 0                                      │   │
+│  └──────────────────────────────────────────────────────────────────┘   │
+│      │         │   │                                                     │
+│      │         │   └── Commits to pull (0)                              │
+│      │         └── Commits to push (1)                                  │
+│      └── Current branch (master)                                        │
+│                                                                          │
+│  Click on branch name to:                                               │
+│  • Switch branches                                                      │
+│  • Create new branch                                                    │
+│  • View recent branches                                                 │
+│                                                                          │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### 11.8 GitLens Extension Features
+
+GitLens adds powerful Git features:
+
+| Feature | How to Use |
+|---------|------------|
+| **Blame annotations** | Hover over any line → see who wrote it |
+| **File history** | Right-click file → GitLens → File History |
+| **Line history** | Click on line → see all changes to that line |
+| **Compare branches** | Command Palette → GitLens: Compare |
+| **Interactive rebase** | Command Palette → GitLens: Interactive Rebase |
+
+### 11.9 Useful Keyboard Shortcuts
 
 | Action | Shortcut |
 |--------|----------|
-| Open terminal | Ctrl+` |
-| Command palette | Ctrl+Shift+P |
-| Search files | Ctrl+P |
-| Find in files | Ctrl+Shift+F |
-| Toggle sidebar | Ctrl+B |
-| Split editor | Ctrl+\ |
+| Open terminal | `Ctrl+`` |
+| Command palette | `Ctrl+Shift+P` |
+| Search files | `Ctrl+P` |
+| Find in files | `Ctrl+Shift+F` |
+| Toggle sidebar | `Ctrl+B` |
+| Split editor | `Ctrl+\` |
+| Source Control | `Ctrl+Shift+G` |
+| Toggle Git panel | `Ctrl+Shift+G G` |
 
 ---
 
-## 11. Commands Used in This Project
+## 12. Troubleshooting
 
-### 11.1 Initial Setup
+### 12.1 Authentication Issues
+
+**Problem**: Push fails with "Authentication failed"
+
+```bash
+# Check your remote URL
+git remote -v
+
+# If using HTTPS, verify credential helper
+git config --global credential.helper
+
+# Clear stored credentials and retry
+git config --global --unset credential.helper
+git config --global credential.helper store
+git push  # Will prompt for username/token again
+```
+
+**Problem**: SSH key not working
+
+```bash
+# Test SSH connection
+ssh -T git@github.com
+
+# If it fails, check if key is loaded
+ssh-add -l
+
+# Add key to agent
+ssh-add ~/.ssh/id_ed25519
+```
+
+### 12.2 VS Code Issues
+
+**Problem**: VS Code doesn't see Git changes
+
+```bash
+# Reload VS Code window
+Ctrl+Shift+P → "Developer: Reload Window"
+
+# Or restart VS Code
+```
+
+**Problem**: VS Code uses wrong Git
+
+```bash
+# Check which Git VS Code is using
+# In VS Code terminal:
+which git
+
+# Should be: /usr/bin/git (WSL)
+# Not: /mnt/c/Program Files/Git/bin/git (Windows)
+```
+
+---
+
+## 13. Commands Used in This Project
+
+### 13.1 Initial Setup
 ```bash
 # Create directory and clone
 mkdir -p ~/work
@@ -478,7 +815,7 @@ git config --global user.email "your.email@example.com"
 git config --global credential.helper store
 ```
 
-### 11.2 Create Project Structure
+### 13.2 Create Project Structure
 ```bash
 # Create directories
 mkdir -p docs/adr
@@ -487,7 +824,7 @@ mkdir -p docs/knowledge-base
 mkdir -p phases/phase-01/{terraform,argocd,scripts}
 ```
 
-### 11.3 Daily Workflow
+### 13.3 Daily Workflow (Terminal)
 ```bash
 # Check status
 git status
@@ -502,9 +839,22 @@ git commit -m "docs: Add Keycloak deep dive documentation"
 git push origin master
 ```
 
+### 13.4 Daily Workflow (VS Code)
+```
+1. Make changes to files
+2. Ctrl+Shift+G (open Source Control)
+3. Review changes (click files to see diff)
+4. Click [+] to stage files
+5. Type commit message
+6. Ctrl+Enter to commit
+7. Click sync icon to push
+```
+
 ---
 
-## 12. Quick Reference
+## 14. Quick Reference
+
+### Terminal Commands
 
 | Action | Command |
 |--------|---------|
@@ -520,13 +870,26 @@ git push origin master
 | History | `git log --oneline` |
 | Differences | `git diff` |
 | Undo changes | `git restore file` |
+| Check remote | `git remote -v` |
 | Open in VS Code | `code .` |
+
+### VS Code Shortcuts
+
+| Action | Shortcut |
+|--------|----------|
+| Source Control | `Ctrl+Shift+G` |
+| Commit | `Ctrl+Enter` (in message box) |
+| Terminal | `Ctrl+`` |
+| Command Palette | `Ctrl+Shift+P` |
+| Search files | `Ctrl+P` |
 
 ---
 
-## 13. References
+## 15. References
 
 - [Git Documentation](https://git-scm.com/doc)
 - [GitHub Guides](https://guides.github.com/)
 - [VS Code Docs](https://code.visualstudio.com/docs)
+- [VS Code Git Integration](https://code.visualstudio.com/docs/sourcecontrol/overview)
+- [GitLens Extension](https://gitlens.amod.io/)
 - [Git Cheat Sheet](https://education.github.com/git-cheat-sheet-education.pdf)
