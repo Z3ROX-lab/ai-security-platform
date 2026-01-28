@@ -58,3 +58,4 @@ charts/*.tgz
 tmp/
 temp/
 *.tmp
+!*sealed*secret*.yaml
