@@ -33,6 +33,29 @@ output "storage_class" {
   value       = "local-path"
 }
 
+# -----------------------------------------------------------------------------
+# OIDC Outputs
+# -----------------------------------------------------------------------------
+
+output "oidc_enabled" {
+  description = "Whether OIDC is enabled for kubectl authentication"
+  value       = var.oidc_enabled
+}
+
+output "oidc_issuer_url" {
+  description = "OIDC issuer URL (Keycloak realm)"
+  value       = var.oidc_enabled ? var.oidc_issuer_url : "N/A - OIDC disabled"
+}
+
+output "oidc_client_id" {
+  description = "OIDC client ID"
+  value       = var.oidc_enabled ? var.oidc_client_id : "N/A - OIDC disabled"
+}
+
+# -----------------------------------------------------------------------------
+# ArgoCD Outputs
+# -----------------------------------------------------------------------------
+
 output "argocd_url" {
   description = "ArgoCD UI URL (after port-forward)"
   value       = "https://localhost:9090"
@@ -53,13 +76,21 @@ output "argocd_port_forward" {
   value       = "kubectl port-forward svc/argocd-server -n argocd 9090:443"
 }
 
+# -----------------------------------------------------------------------------
+# Next Steps
+# -----------------------------------------------------------------------------
+
 output "next_steps" {
   description = "Next steps after cluster creation"
   value       = <<-EOT
     
     ✅ Cluster, ArgoCD, and root-app installed successfully!
     
+    Cluster: ${var.cluster_name}
     Storage: local-path (K3d default)
+    OIDC: ${var.oidc_enabled ? "Enabled" : "Disabled"}
+    ${var.oidc_enabled ? "OIDC Issuer: ${var.oidc_issuer_url}" : ""}
+    
     Note: Longhorn not available on WSL2/Docker Desktop (shared mount limitation)
     
     Next steps:
@@ -70,6 +101,10 @@ output "next_steps" {
     5. Port-forward ArgoCD: kubectl port-forward svc/argocd-server -n argocd 9090:443
     6. Open ArgoCD UI: https://localhost:9090
     7. Sync applications in ArgoCD UI
+    ${var.oidc_enabled ? "\n    OIDC Authentication (after Keycloak is deployed):" : ""}
+    ${var.oidc_enabled ? "    - Install kubelogin: kubectl krew install oidc-login" : ""}
+    ${var.oidc_enabled ? "    - Setup: kubectl oidc-login setup --oidc-issuer-url=${var.oidc_issuer_url} --oidc-client-id=${var.oidc_client_id}" : ""}
+    ${var.oidc_enabled ? "\n    Note: OIDC errors in API Server logs are NORMAL until Keycloak is running." : ""}
     
   EOT
 }

@@ -46,3 +46,37 @@ variable "registry_port" {
   type        = number
   default     = 5000
 }
+
+# -----------------------------------------------------------------------------
+# OIDC Configuration (Keycloak SSO for kubectl)
+# -----------------------------------------------------------------------------
+
+variable "oidc_enabled" {
+  description = "Enable OIDC authentication for kubectl (requires Keycloak)"
+  type        = bool
+  default     = true
+}
+
+variable "oidc_issuer_url" {
+  description = "OIDC issuer URL (Keycloak realm)"
+  type        = string
+  default     = "https://auth.ai-platform.localhost/realms/ai-platform"
+}
+
+variable "oidc_client_id" {
+  description = "OIDC client ID registered in Keycloak"
+  type        = string
+  default     = "kubernetes"
+}
+
+variable "oidc_username_claim" {
+  description = "JWT claim to use as the username"
+  type        = string
+  default     = "preferred_username"
+}
+
+variable "oidc_groups_claim" {
+  description = "JWT claim to use as groups (maps to Keycloak realm roles)"
+  type        = string
+  default     = "groups"
+}
