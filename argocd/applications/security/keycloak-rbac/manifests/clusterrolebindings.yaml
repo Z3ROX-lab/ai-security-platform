@@ -1,0 +1,74 @@
+# Keycloak to Kubernetes RBAC Mapping
+# These ClusterRoleBindings map Keycloak Realm Roles to K8s ClusterRoles
+# 
+# Prerequisites:
+# - K8s API Server configured with OIDC (--oidc-groups-claim=groups)
+# - Keycloak client "kubernetes" with realm-roles-to-groups mapper
+#
+# Realm Roles in Keycloak:
+# - platform-admin    → cluster-admin (full access)
+# - viewer            → view (read-only cluster-wide)
+# - security-auditor  → security-auditor (custom: view + events + logs)
+
+---
+# =============================================================================
+# PLATFORM ADMIN - Full cluster access (god mode)
+# =============================================================================
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: keycloak-platform-admins
+  labels:
+    app.kubernetes.io/managed-by: argocd
+    app.kubernetes.io/part-of: ai-security-platform
+    rbac.ai-platform/source: keycloak
+subjects:
+  - kind: Group
+    name: "platform-admin"           # Keycloak Realm Role
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: cluster-admin                # K8s built-in: full access
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# =============================================================================
+# VIEWER - Read-only access cluster-wide
+# =============================================================================
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: keycloak-viewers
+  labels:
+    app.kubernetes.io/managed-by: argocd
+    app.kubernetes.io/part-of: ai-security-platform
+    rbac.ai-platform/source: keycloak
+subjects:
+  - kind: Group
+    name: "viewer"                   # Keycloak Realm Role
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: view                         # K8s built-in: read-only
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# =============================================================================
+# SECURITY AUDITOR - View + events + logs (custom ClusterRole)
+# =============================================================================
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: keycloak-security-auditors
+  labels:
+    app.kubernetes.io/managed-by: argocd
+    app.kubernetes.io/part-of: ai-security-platform
+    rbac.ai-platform/source: keycloak
+subjects:
+  - kind: Group
+    name: "security-auditor"         # Keycloak Realm Role
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: security-auditor             # Custom ClusterRole (see clusterroles.yaml)
+  apiGroup: rbac.authorization.k8s.io

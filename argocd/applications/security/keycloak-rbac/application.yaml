@@ -1,0 +1,28 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: keycloak-rbac
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: ai-security-platform
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  
+  source:
+    repoURL: https://github.com/Z3R0X/ai-security-platform.git  # ← Update with your repo
+    targetRevision: master
+    path: argocd/applications/security/keycloak-rbac/manifests
+  
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default    # ClusterRoleBindings are cluster-scoped, namespace doesn't matter
+  
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+      - PruneLast=true

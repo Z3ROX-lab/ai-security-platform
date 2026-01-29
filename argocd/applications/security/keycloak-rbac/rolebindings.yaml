@@ -1,0 +1,95 @@
+# RoleBindings for namespace-scoped access
+# ai-engineer role gets edit access ONLY in specific namespaces
+#
+# This is more secure than ClusterRoleBinding because:
+# - AI engineers can only work in their namespaces
+# - They cannot access auth, argocd, kube-system, etc.
+
+---
+# =============================================================================
+# AI ENGINEER - Edit access in ai-apps namespace
+# =============================================================================
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: keycloak-ai-engineers
+  namespace: ai-apps                  # ← Scoped to this namespace only
+  labels:
+    app.kubernetes.io/managed-by: argocd
+    app.kubernetes.io/part-of: ai-security-platform
+    rbac.ai-platform/source: keycloak
+subjects:
+  - kind: Group
+    name: "ai-engineer"               # Keycloak Realm Role
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: edit                          # K8s built-in: read/write workloads
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# =============================================================================
+# AI ENGINEER - Edit access in ai-inference namespace
+# =============================================================================
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: keycloak-ai-engineers
+  namespace: ai-inference             # ← Scoped to this namespace only
+  labels:
+    app.kubernetes.io/managed-by: argocd
+    app.kubernetes.io/part-of: ai-security-platform
+    rbac.ai-platform/source: keycloak
+subjects:
+  - kind: Group
+    name: "ai-engineer"
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: edit
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# =============================================================================
+# AI ENGINEER - View-only access in storage namespace
+# (Can see databases but not modify)
+# =============================================================================
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: keycloak-ai-engineers-view
+  namespace: storage                  # ← View only here
+  labels:
+    app.kubernetes.io/managed-by: argocd
+    app.kubernetes.io/part-of: ai-security-platform
+    rbac.ai-platform/source: keycloak
+subjects:
+  - kind: Group
+    name: "ai-engineer"
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: view                          # ← Read-only
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# =============================================================================
+# AI ENGINEER - View-only access in monitoring namespace (future)
+# =============================================================================
+# apiVersion: rbac.authorization.k8s.io/v1
+# kind: RoleBinding
+# metadata:
+#   name: keycloak-ai-engineers-view
+#   namespace: monitoring
+#   labels:
+#     app.kubernetes.io/managed-by: argocd
+#     app.kubernetes.io/part-of: ai-security-platform
+#     rbac.ai-platform/source: keycloak
+# subjects:
+#   - kind: Group
+#     name: "ai-engineer"
+#     apiGroup: rbac.authorization.k8s.io
+# roleRef:
+#   kind: ClusterRole
+#   name: view
+#   apiGroup: rbac.authorization.k8s.io
