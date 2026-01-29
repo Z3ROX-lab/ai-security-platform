@@ -42,6 +42,8 @@ extraEnvVars:
     value: "true"
   - name: OAUTH_MERGE_ACCOUNTS_BY_EMAIL
     value: "true"
+  - name: DEFAULT_USER_ROLE
+    value: "user"
   - name: OAUTH_PROVIDER_NAME
     value: "Keycloak"
   - name: OPENID_PROVIDER_URL
