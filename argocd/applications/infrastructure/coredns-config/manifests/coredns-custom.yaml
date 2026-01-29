@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coredns-custom
+  namespace: kube-system
+data:
+  ai-platform.server: |
+    ai-platform.localhost:53 {
+      hosts {
+        10.43.233.142 auth.ai-platform.localhost
+        fallthrough
+      }
+    }

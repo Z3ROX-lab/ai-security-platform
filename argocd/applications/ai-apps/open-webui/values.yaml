@@ -40,6 +40,8 @@ extraEnvVars:
   # OIDC Configuration
   - name: ENABLE_OAUTH_SIGNUP
     value: "true"
+  - name: OAUTH_MERGE_ACCOUNTS_BY_EMAIL
+    value: "true"
   - name: OAUTH_PROVIDER_NAME
     value: "Keycloak"
   - name: OPENID_PROVIDER_URL
