@@ -1,0 +1,220 @@
+# =============================================================================
+# SeaweedFS - S3-Compatible Object Storage
+# =============================================================================
+# Replaces MinIO (now in maintenance mode since Dec 2025)
+# Provides S3 API for ML artifacts, backups, RAG documents
+#
+# Access:
+#   Filer UI:  https://seaweedfs.ai-platform.localhost
+#   S3 API:    https://s3.ai-platform.localhost
+# =============================================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: seaweedfs
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: ai-security-platform
+    app.kubernetes.io/component: storage
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  
+  source:
+    # Official SeaweedFS Helm chart
+    repoURL: https://seaweedfs.github.io/seaweedfs/helm
+    chart: seaweedfs
+    targetRevision: 4.0.407
+    
+    helm:
+      releaseName: seaweedfs
+      values: |
+        # =================================================================
+        # Master Server - Manages cluster metadata
+        # =================================================================
+        master:
+          enabled: true
+          replicas: 1
+          port: 9333
+          grpcPort: 19333
+          data:
+            type: "persistentVolumeClaim"
+            size: "1Gi"
+            storageClass: "local-path"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+          livenessProbe:
+            enabled: true
+            initialDelaySeconds: 20
+            periodSeconds: 30
+          readinessProbe:
+            enabled: true
+            initialDelaySeconds: 10
+            periodSeconds: 15
+
+        # =================================================================
+        # Volume Server - Stores actual data
+        # =================================================================
+        volume:
+          enabled: true
+          replicas: 1
+          port: 8080
+          grpcPort: 18080
+          dataDirs:
+            - name: "data"
+              type: "persistentVolumeClaim"
+              size: "10Gi"
+              storageClass: "local-path"
+              maxVolumes: 100
+          idx:
+            type: "persistentVolumeClaim"
+            size: "1Gi"
+            storageClass: "local-path"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "512Mi"
+          compactionMBps: "50"
+          livenessProbe:
+            enabled: true
+            initialDelaySeconds: 20
+            periodSeconds: 30
+          readinessProbe:
+            enabled: true
+            initialDelaySeconds: 10
+            periodSeconds: 15
+
+        # =================================================================
+        # Filer - File interface + S3 API
+        # =================================================================
+        filer:
+          enabled: true
+          replicas: 1
+          port: 8888
+          grpcPort: 18888
+          metricsPort: 9327
+          data:
+            type: "persistentVolumeClaim"
+            size: "2Gi"
+            storageClass: "local-path"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "512Mi"
+          livenessProbe:
+            enabled: true
+            initialDelaySeconds: 20
+            periodSeconds: 30
+          readinessProbe:
+            enabled: true
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          # S3 API
+          s3:
+            enabled: true
+            port: 8333
+            enableAuth: false  # Disable for easy testing
+
+        # =================================================================
+        # Admin UI
+        # =================================================================
+        admin:
+          enabled: true
+          replicas: 1
+          port: 33333
+          grpcPort: 33646
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+
+        # =================================================================
+        # Ingress - Traefik with TLS
+        # =================================================================
+        ingress:
+          filer:
+            enabled: true
+            className: "traefik"
+            annotations:
+              cert-manager.io/cluster-issuer: "ai-platform-ca-issuer"
+              traefik.ingress.kubernetes.io/router.tls: "true"
+            hosts:
+              - host: seaweedfs.ai-platform.localhost
+                paths:
+                  - path: /
+                    pathType: Prefix
+            tls:
+              - secretName: seaweedfs-filer-tls
+                hosts:
+                  - seaweedfs.ai-platform.localhost
+          s3:
+            enabled: true
+            className: "traefik"
+            annotations:
+              cert-manager.io/cluster-issuer: "ai-platform-ca-issuer"
+              traefik.ingress.kubernetes.io/router.tls: "true"
+            hosts:
+              - host: s3.ai-platform.localhost
+                paths:
+                  - path: /
+                    pathType: Prefix
+            tls:
+              - secretName: seaweedfs-s3-tls
+                hosts:
+                  - s3.ai-platform.localhost
+
+        # =================================================================
+        # Security
+        # =================================================================
+        securityContext:
+          runAsUser: 1000
+          runAsGroup: 1000
+          fsGroup: 1000
+          runAsNonRoot: true
+
+        # Disabled for single-node lab
+        worker:
+          enabled: false
+        s3:
+          enabled: false  # Use filer.s3 instead
+        podDisruptionBudget:
+          master:
+            enabled: false
+          volume:
+            enabled: false
+          filer:
+            enabled: false
+  
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: storage
+  
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
