@@ -1,0 +1,58 @@
+# =============================================================================
+# SeaweedFS - S3-Compatible Object Storage
+# =============================================================================
+# Replaces MinIO (maintenance mode since Dec 2025)
+# Provides S3 API for ML artifacts, backups, RAG documents
+#
+# Access:
+#   Filer UI:  https://seaweedfs.ai-platform.localhost
+#   S3 API:    https://s3.ai-platform.localhost
+# =============================================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: seaweedfs
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: ai-security-platform
+    app.kubernetes.io/component: storage
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  
+  # Multiple sources: Helm chart + local values.yaml
+  sources:
+    # Source 1: Official SeaweedFS Helm chart
+    - repoURL: https://seaweedfs.github.io/seaweedfs/helm
+      chart: seaweedfs
+      targetRevision: 4.0.407
+      helm:
+        releaseName: seaweedfs
+        valueFiles:
+          # Reference values.yaml from the Git repo (source 2)
+          - $values/argocd/applications/storage/seaweedfs/values.yaml
+    
+    # Source 2: Git repo containing values.yaml
+    - repoURL: https://github.com/Z3ROX-lab/ai-security-platform
+      targetRevision: master
+      ref: values
+  
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: storage
+  
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

@@ -1,0 +1,219 @@
+# =============================================================================
+# SeaweedFS Helm Values - AI Security Platform
+# =============================================================================
+# S3-compatible object storage for:
+# - ML model artifacts (MLflow)
+# - Training datasets
+# - RAG document storage
+# - Backup archives
+#
+# Chart: https://github.com/seaweedfs/seaweedfs/tree/master/k8s/charts/seaweedfs
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Master Server - Manages cluster metadata
+# -----------------------------------------------------------------------------
+master:
+  enabled: true
+  replicas: 1  # Single node for home lab
+  
+  port: 9333
+  grpcPort: 19333
+  
+  data:
+    type: "persistentVolumeClaim"
+    size: "1Gi"
+    storageClass: "local-path"
+  
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "256Mi"
+  
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 20
+    periodSeconds: 30
+  
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 10
+    periodSeconds: 15
+
+# -----------------------------------------------------------------------------
+# Volume Server - Stores actual data
+# -----------------------------------------------------------------------------
+volume:
+  enabled: true
+  replicas: 1  # Single node for home lab
+  
+  port: 8080
+  grpcPort: 18080
+  
+  dataDirs:
+    - name: "data"
+      type: "persistentVolumeClaim"
+      size: "10Gi"
+      storageClass: "local-path"
+      maxVolumes: 100
+  
+  idx:
+    type: "persistentVolumeClaim"
+    size: "1Gi"
+    storageClass: "local-path"
+  
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "1000m"
+      memory: "512Mi"
+  
+  compactionMBps: "50"
+  
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 20
+    periodSeconds: 30
+  
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 10
+    periodSeconds: 15
+
+# -----------------------------------------------------------------------------
+# Filer - File interface + S3 API
+# -----------------------------------------------------------------------------
+filer:
+  enabled: true
+  replicas: 1  # Single node for home lab
+  
+  port: 8888
+  grpcPort: 18888
+  metricsPort: 9327
+  
+  data:
+    type: "persistentVolumeClaim"
+    size: "2Gi"
+    storageClass: "local-path"
+  
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "1000m"
+      memory: "512Mi"
+  
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 20
+    periodSeconds: 30
+  
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 10
+    periodSeconds: 15
+  
+  # ---------------------------------------------------------------------------
+  # S3 API Configuration
+  # ---------------------------------------------------------------------------
+  s3:
+    enabled: true
+    port: 8333
+    # Disable auth for easy testing in home lab
+    # Set to true for production
+    enableAuth: false
+    
+    # Uncomment to create default buckets
+    # createBuckets:
+    #   - name: mlflow-artifacts
+    #   - name: datasets
+    #   - name: backups
+    #   - name: rag-documents
+
+# -----------------------------------------------------------------------------
+# Admin UI
+# -----------------------------------------------------------------------------
+admin:
+  enabled: true
+  replicas: 1
+  port: 33333
+  grpcPort: 33646
+  
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "64Mi"
+    limits:
+      cpu: "200m"
+      memory: "128Mi"
+
+# -----------------------------------------------------------------------------
+# Disabled components
+# -----------------------------------------------------------------------------
+worker:
+  enabled: false  # Not needed for home lab
+
+s3:
+  enabled: false  # Use filer.s3 instead
+
+# -----------------------------------------------------------------------------
+# Ingress - Traefik with TLS
+# -----------------------------------------------------------------------------
+ingress:
+  filer:
+    enabled: true
+    className: "traefik"
+    annotations:
+      cert-manager.io/cluster-issuer: "ai-platform-ca-issuer"
+      traefik.ingress.kubernetes.io/router.tls: "true"
+    hosts:
+      - host: seaweedfs.ai-platform.localhost
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - secretName: seaweedfs-filer-tls
+        hosts:
+          - seaweedfs.ai-platform.localhost
+  
+  s3:
+    enabled: true
+    className: "traefik"
+    annotations:
+      cert-manager.io/cluster-issuer: "ai-platform-ca-issuer"
+      traefik.ingress.kubernetes.io/router.tls: "true"
+    hosts:
+      - host: s3.ai-platform.localhost
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - secretName: seaweedfs-s3-tls
+        hosts:
+          - s3.ai-platform.localhost
+
+# -----------------------------------------------------------------------------
+# Security
+# -----------------------------------------------------------------------------
+securityContext:
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  runAsNonRoot: true
+
+# -----------------------------------------------------------------------------
+# Pod Disruption Budget (disabled for single replica)
+# -----------------------------------------------------------------------------
+podDisruptionBudget:
+  master:
+    enabled: false
+  volume:
+    enabled: false
+  filer:
+    enabled: false
