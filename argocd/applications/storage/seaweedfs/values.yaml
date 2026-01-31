@@ -15,7 +15,7 @@
 # -----------------------------------------------------------------------------
 master:
   enabled: true
-  replicas: 1  # Single node for home lab
+  replicas: 1
   
   port: 9333
   grpcPort: 19333
@@ -42,13 +42,17 @@ master:
     enabled: true
     initialDelaySeconds: 10
     periodSeconds: 15
+  
+  # Master ingress (optional - usually access via filer)
+  ingress:
+    enabled: false
 
 # -----------------------------------------------------------------------------
 # Volume Server - Stores actual data
 # -----------------------------------------------------------------------------
 volume:
   enabled: true
-  replicas: 1  # Single node for home lab
+  replicas: 1
   
   port: 8080
   grpcPort: 18080
@@ -90,7 +94,7 @@ volume:
 # -----------------------------------------------------------------------------
 filer:
   enabled: true
-  replicas: 1  # Single node for home lab
+  replicas: 1
   
   port: 8888
   grpcPort: 18888
@@ -119,22 +123,48 @@ filer:
     initialDelaySeconds: 10
     periodSeconds: 15
   
-  # ---------------------------------------------------------------------------
   # S3 API Configuration
-  # ---------------------------------------------------------------------------
   s3:
     enabled: true
     port: 8333
-    # Disable auth for easy testing in home lab
-    # Set to true for production
     enableAuth: false
-    
-    # Uncomment to create default buckets
-    # createBuckets:
-    #   - name: mlflow-artifacts
-    #   - name: datasets
-    #   - name: backups
-    #   - name: rag-documents
+  
+  # Filer UI Ingress
+  ingress:
+    enabled: true
+    className: "traefik"
+    host: "seaweedfs.ai-platform.localhost"
+    path: "/"
+    pathType: Prefix
+    annotations:
+      cert-manager.io/cluster-issuer: "ai-platform-ca-issuer"
+      traefik.ingress.kubernetes.io/router.tls: "true"
+    tls:
+      - secretName: seaweedfs-filer-tls
+        hosts:
+          - seaweedfs.ai-platform.localhost
+
+# -----------------------------------------------------------------------------
+# S3 Gateway Ingress
+# -----------------------------------------------------------------------------
+s3:
+  enabled: true
+  port: 8333
+  enableAuth: false
+  
+  ingress:
+    enabled: true
+    className: "traefik"
+    host: "s3.ai-platform.localhost"
+    path: "/"
+    pathType: Prefix
+    annotations:
+      cert-manager.io/cluster-issuer: "ai-platform-ca-issuer"
+      traefik.ingress.kubernetes.io/router.tls: "true"
+    tls:
+      - secretName: seaweedfs-s3-tls
+        hosts:
+          - s3.ai-platform.localhost
 
 # -----------------------------------------------------------------------------
 # Admin UI
@@ -157,55 +187,7 @@ admin:
 # Disabled components
 # -----------------------------------------------------------------------------
 worker:
-  enabled: false  # Not needed for home lab
-
-s3:
-  enabled: false  # Use filer.s3 instead
-
-# -----------------------------------------------------------------------------
-# Ingress - Traefik with TLS
-# -----------------------------------------------------------------------------
-ingress:
-  filer:
-    enabled: true
-    className: "traefik"
-    annotations:
-      cert-manager.io/cluster-issuer: "ai-platform-ca-issuer"
-      traefik.ingress.kubernetes.io/router.tls: "true"
-    hosts:
-      - host: seaweedfs.ai-platform.localhost
-        paths:
-          - path: /
-            pathType: Prefix
-    tls:
-      - secretName: seaweedfs-filer-tls
-        hosts:
-          - seaweedfs.ai-platform.localhost
-  
-  s3:
-    enabled: true
-    className: "traefik"
-    annotations:
-      cert-manager.io/cluster-issuer: "ai-platform-ca-issuer"
-      traefik.ingress.kubernetes.io/router.tls: "true"
-    hosts:
-      - host: s3.ai-platform.localhost
-        paths:
-          - path: /
-            pathType: Prefix
-    tls:
-      - secretName: seaweedfs-s3-tls
-        hosts:
-          - s3.ai-platform.localhost
-
-# -----------------------------------------------------------------------------
-# Security
-# -----------------------------------------------------------------------------
-securityContext:
-  runAsUser: 1000
-  runAsGroup: 1000
-  fsGroup: 1000
-  runAsNonRoot: true
+  enabled: false
 
 # -----------------------------------------------------------------------------
 # Pod Disruption Budget (disabled for single replica)
