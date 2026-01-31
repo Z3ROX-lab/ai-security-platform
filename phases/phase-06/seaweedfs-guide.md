@@ -59,7 +59,38 @@ Add to your hosts file:
 127.0.0.1 s3.ai-platform.localhost
 ```
 
-### 2. Verify Cluster
+### 2. Namespace PodSecurity
+
+⚠️ **IMPORTANT**: SeaweedFS uses `hostPath` volumes for logs, which requires the `storage` namespace to be set to `privileged`.
+
+If your namespace has `restricted` PodSecurity (default in this platform), update it:
+
+```bash
+# Check current labels
+kubectl get namespace storage --show-labels | grep pod-security
+
+# If restricted, change to privileged
+kubectl label namespace storage \
+  pod-security.kubernetes.io/enforce=privileged \
+  pod-security.kubernetes.io/warn=privileged \
+  pod-security.kubernetes.io/audit=privileged \
+  --overwrite
+```
+
+**For GitOps**: Update `argocd/applications/security/security-baseline/manifests/namespaces.yaml`:
+
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: storage
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/audit: privileged
+    pod-security.kubernetes.io/warn: privileged
+```
+
+### 3. Verify Cluster
 
 ```bash
 # Check cluster is running
@@ -143,6 +174,23 @@ curl -k https://s3.ai-platform.localhost
 ```
 
 ## Using SeaweedFS
+
+### Create Buckets via Web UI
+
+The easiest way to create buckets:
+
+1. Open https://seaweedfs.ai-platform.localhost in your browser
+2. Click **New Folder** button
+3. Create the following folders (buckets):
+
+| Folder Name | Purpose |
+|-------------|---------|
+| `mlflow-artifacts` | MLflow model artifacts |
+| `datasets` | Training datasets |
+| `backups` | PostgreSQL backups |
+| `rag-documents` | Documents for RAG |
+
+These folders will appear as S3 buckets when accessed via the S3 API.
 
 ### Web UI
 
@@ -400,6 +448,33 @@ curl http://localhost:9327/metrics
 ```
 
 ## Troubleshooting
+
+### Pods Not Starting - PodSecurity Violation
+
+If you see errors like:
+```
+violates PodSecurity "restricted:latest": 
+  allowPrivilegeEscalation != false
+  restricted volume types (volume "seaweedfs-master-log-volume" uses restricted volume type "hostPath")
+```
+
+**Solution**: The namespace must be `privileged`:
+
+```bash
+# Check current labels
+kubectl get namespace storage --show-labels | grep pod-security
+
+# Fix: Set to privileged
+kubectl label namespace storage \
+  pod-security.kubernetes.io/enforce=privileged \
+  pod-security.kubernetes.io/warn=privileged \
+  pod-security.kubernetes.io/audit=privileged \
+  --overwrite
+
+# Force pod recreation
+kubectl delete statefulset -n storage seaweedfs-master seaweedfs-filer
+# ArgoCD will recreate them automatically
+```
 
 ### Pod CrashLoopBackOff
 

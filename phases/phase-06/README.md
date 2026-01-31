@@ -6,7 +6,7 @@ Phase 6 deploys the data infrastructure required for AI/ML workloads:
 
 | Component | Purpose | Status |
 |-----------|---------|--------|
-| **SeaweedFS** | S3-compatible object storage | 🔄 In Progress |
+| **SeaweedFS** | S3-compatible object storage | ✅ Completed |
 | **Qdrant** | Vector database for RAG | ⏳ Planned |
 
 ## Architecture
@@ -62,6 +62,29 @@ Before starting Phase 6, ensure you have completed:
 - [x] Phase 2-3: Security (Keycloak, PostgreSQL)
 - [x] Phase 4: Security Baseline
 - [x] Phase 5: AI Inference (Ollama, Open WebUI)
+
+### ⚠️ PodSecurity Requirement
+
+SeaweedFS uses `hostPath` volumes for logs, requiring the `storage` namespace to be `privileged`:
+
+```bash
+# Verify current labels
+kubectl get namespace storage --show-labels | grep pod-security
+
+# If restricted, update security-baseline manifests:
+# argocd/applications/security/security-baseline/manifests/namespaces.yaml
+```
+
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: storage
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/audit: privileged
+    pod-security.kubernetes.io/warn: privileged
+```
 
 ## Deployment Order
 
@@ -119,7 +142,18 @@ kubectl get ingress -n storage
 curl -k https://s3.ai-platform.localhost
 ```
 
-### 4. Access UIs
+### 4. Create Buckets
+
+Open https://seaweedfs.ai-platform.localhost and click **New Folder** to create:
+
+| Bucket | Purpose |
+|--------|---------|
+| `mlflow-artifacts` | MLflow model artifacts |
+| `datasets` | Training datasets |
+| `backups` | PostgreSQL backups |
+| `rag-documents` | Documents for RAG |
+
+### 5. Access UIs
 
 - **Filer UI**: https://seaweedfs.ai-platform.localhost
 - **S3 API**: https://s3.ai-platform.localhost
@@ -162,6 +196,26 @@ pg_dump -U postgres dbname | \
 ```
 
 ## Troubleshooting
+
+### PodSecurity violation
+
+If pods fail to start with error:
+```
+violates PodSecurity "restricted:latest": hostPath volumes
+```
+
+**Solution**: Set namespace to privileged:
+
+```bash
+kubectl label namespace storage \
+  pod-security.kubernetes.io/enforce=privileged \
+  pod-security.kubernetes.io/warn=privileged \
+  pod-security.kubernetes.io/audit=privileged \
+  --overwrite
+
+# Force pod recreation
+kubectl delete statefulset -n storage seaweedfs-master seaweedfs-filer
+```
 
 ### Pods not starting
 
