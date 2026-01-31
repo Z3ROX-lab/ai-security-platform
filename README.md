@@ -24,7 +24,7 @@ Enterprise-grade AI/ML platform with comprehensive security coverage, built on K
 │  ┌─────────────────────────────────────────────────────────────────┐   │
 │  │                         Traefik ✅                               │   │
 │  │  chat.ai-platform.localhost | auth.ai-platform.localhost         │   │
-│  │  argocd.ai-platform.localhost                                    │   │
+│  │  seaweedfs.ai-platform.localhost | s3.ai-platform.localhost      │   │
 │  └─────────────────────────────────────────────────────────────────┘   │
 │                                                                         │
 │  APPLICATIONS                                                           │
@@ -44,7 +44,7 @@ Enterprise-grade AI/ML platform with comprehensive security coverage, built on K
 │  DATA & STORAGE                                                         │
 │  ┌──────────┐  ┌──────────┐  ┌──────────┐                             │
 │  │SeaweedFS │  │PostgreSQL│  │ Local-   │                             │
-│  │   (S3)   │  │ (CNPG)✅ │  │ Path ✅  │                             │
+│  │  (S3) ✅ │  │ (CNPG)✅ │  │ Path ✅  │                             │
 │  │          │  │          │  │          │                             │
 │  └──────────┘  └──────────┘  └──────────┘                             │
 │                                                                         │
@@ -62,15 +62,13 @@ Enterprise-grade AI/ML platform with comprehensive security coverage, built on K
 | Phase | Name | Components | Status |
 |-------|------|------------|--------|
 | 1 | Infrastructure & GitOps | K3d, Terraform, ArgoCD, cert-manager | ✅ Done |
-| 2 | Storage Layer | PostgreSQL (CNPG), local-path | ✅ Done |
-| 3 | IAM & Ingress | Traefik, Keycloak | ✅ Done |
+| 2-3 | Storage & IAM | PostgreSQL (CNPG), Traefik, Keycloak | ✅ Done |
 | 4 | K8s Security Baseline | NetworkPolicies, PSS, Sealed Secrets | ✅ Done |
-| 5 | AI Inference | Ollama, Mistral 7B | ✅ Done |
-| 6 | RAG Pipeline | Qdrant, SeaweedFS, Embedding Service | 🔲 Next |
+| 5 | AI Inference | Ollama, Open WebUI + Keycloak SSO | ✅ Done |
+| 6 | AI Data Layer | SeaweedFS (S3), Qdrant (Vector DB) | 🔄 In Progress |
 | 7 | AI Guardrails | NeMo Guardrails | 🔲 Planned |
 | 8 | Observability | Prometheus, Grafana | 🔲 Planned |
 | 9 | MLOps | MLflow | 🔲 Planned |
-| 10 | Demo Application | Open WebUI + Keycloak SSO | ✅ Done |
 
 ## 🚀 Current Deployment Status
 
@@ -84,9 +82,10 @@ traefik               Synced        Healthy
 keycloak              Synced        Healthy
 cert-manager          Synced        Healthy
 security-baseline     Synced        Healthy
+sealed-secrets        Synced        Healthy
 ollama                Synced        Healthy
 open-webui            Synced        Healthy
-sealed-secrets        Synced        Healthy
+seaweedfs             Synced        Healthy
 ```
 
 ### Access URLs (Home Lab)
@@ -94,8 +93,10 @@ sealed-secrets        Synced        Healthy
 | Service | URL | Credentials |
 |---------|-----|-------------|
 | **ArgoCD** | https://argocd.ai-platform.localhost | admin / (see install) |
-| **Keycloak** | https://auth.ai-platform.localhost | admin / admin123 |
+| **Keycloak** | https://auth.ai-platform.localhost | admin / (from secret) |
 | **Open WebUI** | https://chat.ai-platform.localhost | via Keycloak SSO |
+| **SeaweedFS Filer** | https://seaweedfs.ai-platform.localhost | - |
+| **SeaweedFS S3** | https://s3.ai-platform.localhost | - |
 
 > **Note:** Self-signed certificates - accept browser warning to proceed.
 
@@ -105,7 +106,7 @@ sealed-secrets        Synced        Healthy
 |------|-------|
 | Realm | `ai-platform` |
 | Roles | platform-admin, ai-engineer, security-auditor, viewer |
-| Clients | argocd, open-webui |
+| Clients | open-webui, kubernetes |
 | SSO | OIDC integration with Open WebUI |
 
 ## 📋 Architecture Decision Records
@@ -117,7 +118,7 @@ All architectural decisions are documented in [docs/adr/](docs/adr/):
 | [ADR-001](docs/adr/ADR-001-kubernetes-distribution.md) | Kubernetes Distribution (K3d) | ✅ Implemented |
 | [ADR-002](docs/adr/ADR-002-gitops-strategy.md) | GitOps Strategy (ArgoCD) | ✅ Implemented |
 | [ADR-003](docs/adr/ADR-003-iam-strategy.md) | IAM Strategy (Keycloak) | ✅ Implemented |
-| [ADR-004](docs/adr/ADR-004-storage-strategy.md) | Storage Strategy (CNPG, local-path) | ✅ Implemented |
+| [ADR-004](docs/adr/ADR-004-storage-strategy.md) | Storage Strategy (CNPG, SeaweedFS) | ✅ Implemented |
 | [ADR-005](docs/adr/ADR-005-ArgoCD-GitOps-Best-Practices.md) | ArgoCD GitOps Best Practices | ✅ Implemented |
 | [ADR-006](docs/adr/ADR-006-VectorDB-Strategy.md) | VectorDB Strategy (Qdrant) | 📋 Planned |
 | [ADR-007](docs/adr/ADR-007-embedding-strategy.md) | Embedding Strategy | 📋 Planned |
@@ -156,9 +157,9 @@ All architectural decisions are documented in [docs/adr/](docs/adr/):
 | **Secrets** | Sealed Secrets (Bitnami) | ✅ Running |
 | **LLM** | Ollama + Mistral 7B | ✅ Running |
 | **Chat UI** | Open WebUI | ✅ Running |
+| **Object Storage** | SeaweedFS (S3-compatible) | ✅ Running |
 | **CNI** | Flannel (K3s default) | ✅ Running |
 | **VectorDB** | Qdrant | 🔲 Planned |
-| **Object Storage** | SeaweedFS | 🔲 Planned |
 | **Guardrails** | NeMo Guardrails | 🔲 Planned |
 | **Observability** | Prometheus, Grafana | 🔲 Planned |
 
@@ -172,7 +173,8 @@ ai-security-platform/
 │       ├── storage/
 │       │   ├── cnpg-operator/           # CloudNativePG Operator
 │       │   ├── postgresql/              # PostgreSQL Cluster
-│       │   └── openwebui-db-init/       # Database initialization
+│       │   ├── openwebui-db-init/       # Database initialization
+│       │   └── seaweedfs/               # S3-compatible object storage
 │       ├── infrastructure/
 │       │   └── traefik/                 # Ingress Controller
 │       ├── auth/
@@ -191,25 +193,31 @@ ai-security-platform/
 │   ├── phase-01/                        # Infrastructure
 │   ├── phase-02-03/                     # Storage, Auth
 │   ├── phase-04/                        # Security baseline
-│   └── phase-05/                        # AI inference
+│   ├── phase-05/                        # AI inference
+│   └── phase-06/                        # AI data layer
 └── README.md
 ```
 
-## 📖 Knowledge Base
+## 📖 Documentation
 
-### Guides
-- [Phase 1 Guide](phases/phase-01/step-by-step-guide.md) - K3d, Terraform, ArgoCD
-- [Phase 2-3 Guide](phases/phase-02-03/step-by-step-guide.md) - PostgreSQL, Traefik, Keycloak
-- [Phase 4 Guide](phases/phase-04/security-baseline-guide.md) - Security baseline
-- [Phase 5 Guide](phases/phase-05/ollama-llm-guide.md) - Ollama deployment
+### Phase Guides
 
-### Deep Dives
+| Phase | Guide | Description |
+|-------|-------|-------------|
+| 1 | [README](phases/phase-01/README.md) | K3d, Terraform, ArgoCD |
+| 2-3 | [README](phases/phase-02-03/README.md) | PostgreSQL, Traefik, Keycloak |
+| 4 | [README](phases/phase-04/README.md) | Security baseline |
+| 5 | [README](phases/phase-05/README.md) | Ollama, Open WebUI |
+| 6 | [README](phases/phase-06/README.md) | SeaweedFS, Qdrant |
+
+### Knowledge Base
+
 - [CNPG & PostgreSQL Guide](docs/knowledge-base/cnpg-postgresql-guide.md)
 - [Helm & ArgoCD Integration](docs/knowledge-base/helm-argocd-guide.md)
 - [GitOps Guide](docs/knowledge-base/GitOps%20Guide%20-%20AI%20Security%20Platform.md)
 - [Kubernetes Security Architecture](docs/knowledge-base/kubernetes-security-architecture-guide.md)
 - [Sealed Secrets Guide](docs/knowledge-base/sealed-secrets-guide.md)
-- [LangChain Guide](docs/knowledge-base/langchain-guide.md)
+- [Keycloak Expert Guide](docs/knowledge-base/keycloak-expert-guide.md)
 - [K3d Troubleshooting](docs/knowledge-base/k3d-troubleshooting-guide.md)
 
 ## 🚀 Quick Start
@@ -225,7 +233,7 @@ ai-security-platform/
 
 ```bash
 # Clone the repository
-git clone https://github.com/youruser/ai-security-platform.git
+git clone https://github.com/Z3ROX-lab/ai-security-platform.git
 cd ai-security-platform
 
 # Phase 1: Create K3d cluster with Terraform
@@ -248,13 +256,15 @@ watch kubectl get applications -n argocd
 # Password: kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
 ```
 
-### Configure Local DNS (Windows + WSL2)
+### Configure Local DNS
 
-Add to `C:\Windows\System32\drivers\etc\hosts`:
+Add to `/etc/hosts` (Linux/Mac) or `C:\Windows\System32\drivers\etc\hosts` (Windows):
 ```
 127.0.0.1 auth.ai-platform.localhost
 127.0.0.1 chat.ai-platform.localhost
 127.0.0.1 argocd.ai-platform.localhost
+127.0.0.1 seaweedfs.ai-platform.localhost
+127.0.0.1 s3.ai-platform.localhost
 ```
 
 ### After Laptop Reboot
@@ -272,13 +282,13 @@ kubectl get pods -A -w
 
 This platform demonstrates patterns for enterprise deployment with data sovereignty requirements:
 
-| Aspect | Home Lab | Enterprise (GTT) |
-|--------|----------|------------------|
+| Aspect | Home Lab | Enterprise |
+|--------|----------|------------|
 | **LLM** | Ollama + Mistral 7B | vLLM + Mixtral 8x7B |
 | **Inference** | CPU/Light GPU | NVIDIA A100/H100 |
 | **CNI** | Flannel | Cilium (eBPF, L7 policies) |
 | **Secrets** | Sealed Secrets | HashiCorp Vault |
-| **Storage** | local-path | Longhorn / Ceph |
+| **Storage** | local-path, SeaweedFS | Longhorn / Ceph |
 | **Compliance** | N/A | RGPD, SecNumCloud, C4-C5 |
 
 See [ADR-012](docs/adr/ADR-012-sovereign-llm-strategy.md) for detailed sovereign LLM strategy.
