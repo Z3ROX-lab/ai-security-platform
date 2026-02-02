@@ -2,26 +2,13 @@
 # Qdrant Helm Values - AI Security Platform
 # =============================================================================
 # Vector database for RAG pipeline
-# - Document embeddings storage
-# - Semantic similarity search
-# - Collection-based isolation
-#
 # Chart: https://github.com/qdrant/qdrant-helm
-# Docs: https://qdrant.tech/documentation/
 # =============================================================================
 
 # -----------------------------------------------------------------------------
 # Replica Configuration
 # -----------------------------------------------------------------------------
 replicaCount: 1
-
-# -----------------------------------------------------------------------------
-# Image Configuration
-# -----------------------------------------------------------------------------
-image:
-  repository: qdrant/qdrant
-  tag: ""  # Uses chart default (latest stable)
-  pullPolicy: IfNotPresent
 
 # -----------------------------------------------------------------------------
 # Resource Limits (as per ADR-006)
@@ -47,38 +34,13 @@ persistence:
 # -----------------------------------------------------------------------------
 # API Key Authentication
 # -----------------------------------------------------------------------------
-# Enable API key authentication for security
-# The API key will be stored in a Kubernetes secret
 apiKey: true
-
-# Use existing secret for API key (recommended for GitOps)
-# Create with: kubectl create secret generic qdrant-api-key --from-literal=api-key=<your-key> -n ai-inference
-# existingApiKeySecret: qdrant-api-key
-# existingApiKeySecretKey: api-key
 
 # -----------------------------------------------------------------------------
 # Qdrant Configuration
 # -----------------------------------------------------------------------------
 config:
   log_level: INFO
-  
-  # Storage configuration
-  storage:
-    storage_path: /qdrant/storage
-    snapshots_path: /qdrant/snapshots
-    
-    # Performance tuning for home lab
-    performance:
-      max_search_threads: 0  # Auto-detect
-      max_optimization_threads: 1
-  
-  # Service ports
-  service:
-    http_port: 6333
-    grpc_port: 6334
-    enable_tls: false  # TLS handled by ingress
-  
-  # Cluster mode disabled (single node)
   cluster:
     enabled: false
 
@@ -87,17 +49,13 @@ config:
 # -----------------------------------------------------------------------------
 service:
   type: ClusterIP
-  ports:
-    rest: 6333
-    grpc: 6334
-    metrics: 6335
 
 # -----------------------------------------------------------------------------
 # Ingress - REST API
 # -----------------------------------------------------------------------------
 ingress:
   enabled: true
-  className: "traefik"
+  ingressClassName: "traefik"
   annotations:
     cert-manager.io/cluster-issuer: "ai-platform-ca-issuer"
     traefik.ingress.kubernetes.io/router.tls: "true"
@@ -112,51 +70,19 @@ ingress:
         - qdrant.ai-platform.localhost
 
 # -----------------------------------------------------------------------------
-# Metrics (for Prometheus)
-# -----------------------------------------------------------------------------
-metrics:
-  enabled: true
-  serviceMonitor:
-    enabled: false  # Enable when Prometheus is deployed
-
-# -----------------------------------------------------------------------------
-# Pod Security
-# -----------------------------------------------------------------------------
-podSecurityContext:
-  fsGroup: 1000
-
-securityContext:
-  runAsNonRoot: true
-  runAsUser: 1000
-  runAsGroup: 1000
-  allowPrivilegeEscalation: false
-  capabilities:
-    drop:
-      - ALL
-  readOnlyRootFilesystem: false  # Qdrant needs to write to storage
-  seccompProfile:
-    type: RuntimeDefault
-
-# -----------------------------------------------------------------------------
 # Probes
 # -----------------------------------------------------------------------------
 livenessProbe:
   enabled: true
   initialDelaySeconds: 30
-  periodSeconds: 10
-  timeoutSeconds: 5
-  failureThreshold: 3
 
 readinessProbe:
   enabled: true
   initialDelaySeconds: 10
-  periodSeconds: 5
-  timeoutSeconds: 3
-  failureThreshold: 3
 
 # -----------------------------------------------------------------------------
-# Node Selection (optional)
+# Metrics (for Prometheus - enable later)
 # -----------------------------------------------------------------------------
-nodeSelector: {}
-tolerations: []
-affinity: {}
+metrics:
+  serviceMonitor:
+    enabled: false
