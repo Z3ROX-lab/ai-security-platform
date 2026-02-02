@@ -7,7 +7,7 @@ spec:
   project: default
   source:
     repoURL: https://github.com/Z3ROX-lab/ai-security-platform
-    targetRevision: main
+    targetRevision: master
     path: argocd/applications/infrastructure/coredns-config/manifests
   destination:
     server: https://kubernetes.default.svc
