@@ -1,0 +1,29 @@
+# =============================================================================
+# RAG API Kustomization
+# =============================================================================
+# Generates ConfigMaps from files and applies all manifests
+# =============================================================================
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: ai-inference
+
+# Resources to deploy
+resources:
+  - deployment.yaml
+
+# Generate ConfigMap from Python script file
+configMapGenerator:
+  - name: rag-api-code
+    files:
+      - rag_api.py
+
+# Common labels
+commonLabels:
+  app.kubernetes.io/part-of: ai-security-platform
+  app.kubernetes.io/managed-by: argocd
+
+# Disable hash suffix for ConfigMaps (keeps names predictable)
+generatorOptions:
+  disableNameSuffixHash: true

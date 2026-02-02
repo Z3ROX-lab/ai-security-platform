@@ -1,0 +1,51 @@
+# =============================================================================
+# RAG API - ArgoCD Application
+# =============================================================================
+# Custom RAG service using Qdrant + Ollama
+# Provides REST API for document ingestion and semantic search
+#
+# Access:
+#   API: https://rag.ai-platform.localhost
+#   Endpoints:
+#     GET  /health  - Health check
+#     GET  /stats   - Collection statistics
+#     POST /ingest  - Ingest documents
+#     POST /search  - Search (without generation)
+#     POST /query   - Full RAG query (search + generate)
+# =============================================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: rag-api
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: ai-security-platform
+    app.kubernetes.io/component: rag
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  
+  source:
+    repoURL: https://github.com/Z3ROX-lab/ai-security-platform
+    targetRevision: master
+    path: argocd/applications/ai/rag-api/manifests
+  
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ai-inference
+  
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
