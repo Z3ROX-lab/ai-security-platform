@@ -6,7 +6,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/Z3R0X/ai-security-platform.git
+    repoURL: https://github.com/Z3R0X/ai-security-platform
     targetRevision: main
     path: argocd/applications/infrastructure/coredns-config/manifests
   destination:
