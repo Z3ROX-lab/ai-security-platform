@@ -25,13 +25,14 @@ Enterprise-grade AI/ML platform with comprehensive security coverage, built on K
 │  │                         Traefik ✅                               │   │
 │  │  chat.ai-platform.localhost | auth.ai-platform.localhost         │   │
 │  │  seaweedfs.ai-platform.localhost | s3.ai-platform.localhost      │   │
+│  │  qdrant.ai-platform.localhost                                    │   │
 │  └─────────────────────────────────────────────────────────────────┘   │
 │                                                                         │
 │  APPLICATIONS                                                           │
 │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐              │
 │  │ Open     │  │ Keycloak │  │  Ollama  │  │  Qdrant  │              │
-│  │ WebUI ✅ │  │ IAM ✅   │  │ LLM ✅   │  │ VectorDB │              │
-│  │ (Chat)   │  │  (SSO)   │  │(Mistral) │  │          │              │
+│  │ WebUI ✅ │  │ IAM ✅   │  │ LLM ✅   │  │VectorDB✅│              │
+│  │ (Chat)   │  │  (SSO)   │  │(Mistral) │  │  (RAG)   │              │
 │  └──────────┘  └──────────┘  └──────────┘  └──────────┘              │
 │                                                                         │
 │  AI SECURITY                                                            │
@@ -65,9 +66,9 @@ Enterprise-grade AI/ML platform with comprehensive security coverage, built on K
 | 2-3 | Storage & IAM | PostgreSQL (CNPG), Traefik, Keycloak | ✅ Done |
 | 4 | K8s Security Baseline | NetworkPolicies, PSS, Sealed Secrets | ✅ Done |
 | 5 | AI Inference | Ollama, Open WebUI + Keycloak SSO | ✅ Done |
-| 6 | AI Data Layer | SeaweedFS (S3), Qdrant (Vector DB) | 🔄 In Progress |
+| 6 | AI Data Layer | SeaweedFS (S3), Qdrant (Vector DB) | ✅ Done |
 | 7 | AI Guardrails | NeMo Guardrails | 🔲 Planned |
-| 8 | Observability | Prometheus, Grafana | 🔲 Planned |
+| 8 | Observability | Prometheus, Grafana, Loki, Falco | 🔲 Planned |
 | 9 | MLOps | MLflow | 🔲 Planned |
 
 ## 🚀 Current Deployment Status
@@ -86,6 +87,7 @@ sealed-secrets        Synced        Healthy
 ollama                Synced        Healthy
 open-webui            Synced        Healthy
 seaweedfs             Synced        Healthy
+qdrant                Synced        Healthy
 ```
 
 ### Access URLs (Home Lab)
@@ -97,6 +99,7 @@ seaweedfs             Synced        Healthy
 | **Open WebUI** | https://chat.ai-platform.localhost | via Keycloak SSO |
 | **SeaweedFS Filer** | https://seaweedfs.ai-platform.localhost | - |
 | **SeaweedFS S3** | https://s3.ai-platform.localhost | - |
+| **Qdrant** | https://qdrant.ai-platform.localhost | API Key (from secret) |
 
 > **Note:** Self-signed certificates - accept browser warning to proceed.
 
@@ -120,7 +123,7 @@ All architectural decisions are documented in [docs/adr/](docs/adr/):
 | [ADR-003](docs/adr/ADR-003-iam-strategy.md) | IAM Strategy (Keycloak) | ✅ Implemented |
 | [ADR-004](docs/adr/ADR-004-storage-strategy.md) | Storage Strategy (CNPG, SeaweedFS) | ✅ Implemented |
 | [ADR-005](docs/adr/ADR-005-ArgoCD-GitOps-Best-Practices.md) | ArgoCD GitOps Best Practices | ✅ Implemented |
-| [ADR-006](docs/adr/ADR-006-VectorDB-Strategy.md) | VectorDB Strategy (Qdrant) | 📋 Planned |
+| [ADR-006](docs/adr/ADR-006-VectorDB-Strategy.md) | VectorDB Strategy (Qdrant) | ✅ Implemented |
 | [ADR-007](docs/adr/ADR-007-embedding-strategy.md) | Embedding Strategy | 📋 Planned |
 | [ADR-008](docs/adr/ADR-008-llm-inference-strategy.md) | LLM Inference Strategy (Ollama) | ✅ Implemented |
 | [ADR-009](docs/adr/ADR-009-ai-guardrails-strategy.md) | AI Guardrails Strategy (NeMo) | 📋 Planned |
@@ -128,6 +131,7 @@ All architectural decisions are documented in [docs/adr/](docs/adr/):
 | [ADR-011](docs/adr/ADR-011-llm-application-framework.md) | LLM Application Framework (LangChain) | ✅ Accepted |
 | [ADR-012](docs/adr/ADR-012-sovereign-llm-strategy.md) | Sovereign LLM Strategy (vLLM, Mistral) | ✅ Accepted |
 | [ADR-013](docs/adr/ADR-013-cni-strategy.md) | CNI Strategy (Flannel/Cilium) | ✅ Accepted |
+| [ADR-016](docs/adr/ADR-016-observability-security-monitoring-strategy.md) | Observability & Security Monitoring | ✅ Accepted |
 
 ## 🔒 Security Coverage (OWASP LLM Top 10)
 
@@ -158,10 +162,10 @@ All architectural decisions are documented in [docs/adr/](docs/adr/):
 | **LLM** | Ollama + Mistral 7B | ✅ Running |
 | **Chat UI** | Open WebUI | ✅ Running |
 | **Object Storage** | SeaweedFS (S3-compatible) | ✅ Running |
+| **VectorDB** | Qdrant | ✅ Running |
 | **CNI** | Flannel (K3s default) | ✅ Running |
-| **VectorDB** | Qdrant | 🔲 Planned |
 | **Guardrails** | NeMo Guardrails | 🔲 Planned |
-| **Observability** | Prometheus, Grafana | 🔲 Planned |
+| **Observability** | Prometheus, Grafana, Loki, Falco | 🔲 Planned |
 
 ## 📁 Repository Structure
 
@@ -184,6 +188,8 @@ ai-security-platform/
 │       │   └── sealed-secrets/          # Secrets management
 │       ├── ai-inference/
 │       │   └── ollama/                  # LLM serving
+│       ├── ai/
+│       │   └── qdrant/                  # Vector database
 │       └── ai-apps/
 │           └── open-webui/              # Chat interface
 ├── docs/
@@ -265,6 +271,7 @@ Add to `/etc/hosts` (Linux/Mac) or `C:\Windows\System32\drivers\etc\hosts` (Wind
 127.0.0.1 argocd.ai-platform.localhost
 127.0.0.1 seaweedfs.ai-platform.localhost
 127.0.0.1 s3.ai-platform.localhost
+127.0.0.1 qdrant.ai-platform.localhost
 ```
 
 ### After Laptop Reboot

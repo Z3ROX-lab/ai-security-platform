@@ -29,6 +29,17 @@ Phase 6 deploys the data infrastructure required for AI/ML workloads:
 │  │  Filer UI: :8888        │    │  gRPC: :6334            │    │
 │  └─────────────────────────┘    └─────────────────────────┘    │
 │                                                                 │
+│  RAG PIPELINE                                                   │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │                                                          │   │
+│  │  Option A: Open WebUI (built-in ChromaDB)               │   │
+│  │  Option B: Custom RAG (Qdrant + Python script)          │   │
+│  │                                                          │   │
+│  │  Document → Chunks → Embedding → Vector DB → LLM        │   │
+│  │                       (nomic-embed-text)    (Mistral)   │   │
+│  │                                                          │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
 │  URLs:                                                          │
 │  • https://seaweedfs.ai-platform.localhost (Filer UI)          │
 │  • https://s3.ai-platform.localhost (S3 API)                   │
@@ -97,6 +108,8 @@ metadata:
 |-------|-------------|
 | [SeaweedFS Guide](seaweedfs-guide.md) | Deploy S3-compatible object storage |
 | [Qdrant Guide](qdrant-guide.md) | Deploy vector database for RAG |
+| [Open WebUI RAG Guide](openwebui-rag-guide.md) | Built-in RAG with ChromaDB |
+| [Custom RAG with Qdrant](qdrant-rag-guide.md) | Python RAG pipeline with Qdrant |
 
 ## Resource Requirements
 
@@ -283,8 +296,25 @@ kubectl get storageclass
 
 After completing Phase 6:
 
-1. **Create SeaweedFS buckets** for different use cases (mlflow, datasets, backups)
-2. **Create Qdrant collections** for RAG (documents_general, documents_security, etc.)
-3. **Deploy embedding model** (all-MiniLM-L6-v2 via Ollama or separate service)
-4. **Build RAG pipeline** to connect documents → embeddings → Qdrant → LLM
-5. **Proceed to Phase 7** (NeMo Guardrails) or **Phase 8** (Observability)
+1. ✅ **SeaweedFS buckets** created (mlflow-artifacts, datasets, backups, rag-documents)
+2. ✅ **Embedding model** deployed (nomic-embed-text via Ollama)
+3. ✅ **Open WebUI RAG** configured (built-in ChromaDB)
+4. ✅ **Custom RAG script** available (rag_pipeline.py with Qdrant)
+
+**Choose your next phase:**
+- **Phase 7**: NeMo Guardrails (AI Safety)
+- **Phase 8**: Observability (Prometheus, Grafana, Loki, Falco)
+
+## RAG Options Comparison
+
+| Feature | Open WebUI RAG | Custom Qdrant RAG |
+|---------|----------------|-------------------|
+| **Vector Store** | ChromaDB (internal) | Qdrant (external) |
+| **Setup** | Built-in, zero config | Python script |
+| **Access** | UI only | API + CLI |
+| **Visibility** | Black box | Full access to vectors |
+| **Best For** | Quick start | Portfolio, Production |
+
+See guides:
+- [Open WebUI RAG Guide](openwebui-rag-guide.md)
+- [Custom RAG with Qdrant](qdrant-rag-guide.md)
