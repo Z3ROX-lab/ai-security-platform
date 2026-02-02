@@ -11,7 +11,7 @@ spec:
   project: default
   
   source:
-    repoURL: https://github.com/Z3ROX/ai-security-platform # ← Update with your repo
+    repoURL: https://github.com/Z3ROX-lab/ai-security-platform # ← Update with your repo
     targetRevision: master
     path: argocd/applications/security/keycloak-rbac/manifests
   
