@@ -1,0 +1,55 @@
+# =============================================================================
+# Guardrails API - ArgoCD Application (Phase 7a)
+# =============================================================================
+# LLM Guard service for OWASP LLM Top 10 protection
+#
+# Scanners:
+#   Input:  PromptInjection, Toxicity, Secrets
+#   Output: Sensitive (PII), NoRefusal
+#
+# Access:
+#   API: https://guardrails.ai-platform.localhost
+#   Swagger: https://guardrails.ai-platform.localhost/docs
+#
+# OWASP Coverage:
+#   LLM01: Prompt Injection → PromptInjection scanner
+#   LLM02: Insecure Output → Sensitive, NoRefusal scanners
+#   LLM06: Sensitive Info → Sensitive (PII) scanner
+# =============================================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: guardrails-api
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: ai-security-platform
+    app.kubernetes.io/component: guardrails
+    phase: "7"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  
+  source:
+    repoURL: https://github.com/Z3ROX-lab/ai-security-platform
+    targetRevision: master
+    path: argocd/applications/security/guardrails-api/manifests
+  
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ai-inference
+  
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

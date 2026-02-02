@@ -1,0 +1,23 @@
+# =============================================================================
+# Guardrails API Kustomization
+# =============================================================================
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: ai-inference
+
+resources:
+  - deployment.yaml
+
+configMapGenerator:
+  - name: guardrails-api-code
+    files:
+      - guardrails_api.py
+
+commonLabels:
+  app.kubernetes.io/part-of: ai-security-platform
+  app.kubernetes.io/managed-by: argocd
+
+generatorOptions:
+  disableNameSuffixHash: true

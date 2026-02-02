@@ -1,0 +1,191 @@
+# =============================================================================
+# Guardrails API Kubernetes Manifests (Phase 7a)
+# =============================================================================
+# LLM Guard service with essential scanners for OWASP LLM Top 10 protection
+# Uses python:3.11-slim + ConfigMap (no custom Docker image needed)
+# =============================================================================
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: guardrails-api-config
+  namespace: ai-inference
+  labels:
+    app: guardrails-api
+    app.kubernetes.io/name: guardrails-api
+    app.kubernetes.io/component: config
+data:
+  # Scanner thresholds
+  PROMPT_INJECTION_THRESHOLD: "0.5"
+  TOXICITY_THRESHOLD: "0.7"
+  
+  # Enable/disable scanners
+  ENABLE_PROMPT_INJECTION: "true"
+  ENABLE_TOXICITY: "true"
+  ENABLE_PII: "true"
+  ENABLE_SECRETS: "true"
+  
+  # Service config
+  PORT: "8000"
+  LOG_LEVEL: "INFO"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: guardrails-api-script
+  namespace: ai-inference
+  labels:
+    app: guardrails-api
+    app.kubernetes.io/name: guardrails-api
+    app.kubernetes.io/component: script
+data:
+  requirements.txt: |
+    fastapi>=0.109.0
+    uvicorn>=0.27.0
+    pydantic>=2.5.0
+    llm-guard>=0.3.0
+
+  startup.sh: |
+    #!/bin/bash
+    set -e
+    
+    echo "📦 Installing dependencies..."
+    pip install --no-cache-dir -q -r /app/requirements.txt
+    
+    echo "🔧 Downloading spaCy model (for PII detection)..."
+    python -m spacy download en_core_web_sm || true
+    
+    echo "🚀 Starting Guardrails API..."
+    cd /app
+    exec python guardrails_api.py
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: guardrails-api
+  namespace: ai-inference
+  labels:
+    app: guardrails-api
+    app.kubernetes.io/name: guardrails-api
+    app.kubernetes.io/component: api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: guardrails-api
+  template:
+    metadata:
+      labels:
+        app: guardrails-api
+        app.kubernetes.io/name: guardrails-api
+    spec:
+      containers:
+      - name: guardrails-api
+        image: python:3.11-slim
+        command: ["/bin/bash", "/app/startup.sh"]
+        ports:
+        - name: http
+          containerPort: 8000
+          protocol: TCP
+        envFrom:
+        - configMapRef:
+            name: guardrails-api-config
+        volumeMounts:
+        - name: script
+          mountPath: /app/guardrails_api.py
+          subPath: guardrails_api.py
+        - name: startup
+          mountPath: /app/startup.sh
+          subPath: startup.sh
+        - name: startup
+          mountPath: /app/requirements.txt
+          subPath: requirements.txt
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        # Longer startup time for model downloads
+        startupProbe:
+          httpGet:
+            path: /
+            port: 8000
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          failureThreshold: 30
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+      volumes:
+      - name: script
+        configMap:
+          name: guardrails-api-code
+      - name: startup
+        configMap:
+          name: guardrails-api-script
+          defaultMode: 0755
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: guardrails-api
+  namespace: ai-inference
+  labels:
+    app: guardrails-api
+    app.kubernetes.io/name: guardrails-api
+spec:
+  type: ClusterIP
+  selector:
+    app: guardrails-api
+  ports:
+  - name: http
+    port: 8000
+    targetPort: 8000
+    protocol: TCP
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: guardrails-api
+  namespace: ai-inference
+  labels:
+    app: guardrails-api
+    app.kubernetes.io/name: guardrails-api
+  annotations:
+    cert-manager.io/cluster-issuer: "ai-platform-ca-issuer"
+    traefik.ingress.kubernetes.io/router.tls: "true"
+spec:
+  ingressClassName: traefik
+  tls:
+  - hosts:
+    - guardrails.ai-platform.localhost
+    secretName: guardrails-api-tls
+  rules:
+  - host: guardrails.ai-platform.localhost
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: guardrails-api
+            port:
+              number: 8000
