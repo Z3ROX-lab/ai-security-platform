@@ -7,7 +7,7 @@ Phase 6 deploys the data infrastructure required for AI/ML workloads:
 | Component | Purpose | Status |
 |-----------|---------|--------|
 | **SeaweedFS** | S3-compatible object storage | ✅ Completed |
-| **Qdrant** | Vector database for RAG | ⏳ Planned |
+| **Qdrant** | Vector database for RAG | ✅ Completed |
 
 ## Architecture
 
@@ -25,14 +25,14 @@ Phase 6 deploys the data infrastructure required for AI/ML workloads:
 │  │  • RAG documents        │    │  • RAG retrieval        │    │
 │  │  • Backup archives      │    │  • Similarity matching  │    │
 │  │                         │    │                         │    │
-│  │  S3 API: :8333          │    │  gRPC: :6334            │    │
-│  │  Filer UI: :8888        │    │  REST: :6333            │    │
+│  │  S3 API: :8333          │    │  REST: :6333            │    │
+│  │  Filer UI: :8888        │    │  gRPC: :6334            │    │
 │  └─────────────────────────┘    └─────────────────────────┘    │
 │                                                                 │
 │  URLs:                                                          │
 │  • https://seaweedfs.ai-platform.localhost (Filer UI)          │
 │  • https://s3.ai-platform.localhost (S3 API)                   │
-│  • https://qdrant.ai-platform.localhost (planned)              │
+│  • https://qdrant.ai-platform.localhost (Vector DB API)        │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -96,7 +96,7 @@ metadata:
 | Guide | Description |
 |-------|-------------|
 | [SeaweedFS Guide](seaweedfs-guide.md) | Deploy S3-compatible object storage |
-| [Qdrant Guide](qdrant-guide.md) | Deploy vector database (coming soon) |
+| [Qdrant Guide](qdrant-guide.md) | Deploy vector database for RAG |
 
 ## Resource Requirements
 
@@ -106,8 +106,8 @@ metadata:
 | SeaweedFS Volume | 100m | 256Mi | 10Gi |
 | SeaweedFS Filer | 100m | 256Mi | 2Gi |
 | SeaweedFS Admin | 50m | 64Mi | - |
-| Qdrant | 100m | 512Mi | 5Gi |
-| **Total** | ~450m | ~1.2Gi | ~18Gi |
+| Qdrant | 100m | 256Mi | 5Gi |
+| **Total** | ~550m | ~1.0Gi | ~18Gi |
 
 ## Quick Start
 
@@ -117,6 +117,7 @@ metadata:
 # Add to /etc/hosts (or Windows hosts file)
 127.0.0.1 seaweedfs.ai-platform.localhost
 127.0.0.1 s3.ai-platform.localhost
+127.0.0.1 qdrant.ai-platform.localhost
 ```
 
 ### 2. Deploy SeaweedFS
@@ -157,6 +158,37 @@ Open https://seaweedfs.ai-platform.localhost and click **New Folder** to create:
 
 - **Filer UI**: https://seaweedfs.ai-platform.localhost
 - **S3 API**: https://s3.ai-platform.localhost
+
+### 6. Deploy Qdrant
+
+```bash
+# ArgoCD will auto-sync, or manually apply:
+kubectl apply -f argocd/applications/ai/qdrant/application.yaml
+
+# Watch deployment
+kubectl get pods -n ai-inference -w
+```
+
+### 7. Verify Qdrant
+
+```bash
+# Check pods
+kubectl get pods -n ai-inference -l app.kubernetes.io/name=qdrant
+
+# Check ingress
+kubectl get ingress -n ai-inference
+
+# Test API
+curl -k https://qdrant.ai-platform.localhost/healthz
+```
+
+### 8. Access All UIs
+
+| Service | URL |
+|---------|-----|
+| SeaweedFS Filer | https://seaweedfs.ai-platform.localhost |
+| SeaweedFS S3 | https://s3.ai-platform.localhost |
+| Qdrant | https://qdrant.ai-platform.localhost/dashboard |
 
 ## Use Cases
 
@@ -249,9 +281,10 @@ kubectl get storageclass
 
 ## Next Steps
 
-After completing SeaweedFS deployment:
+After completing Phase 6:
 
-1. **Create buckets** for different use cases (mlflow, datasets, backups)
-2. **Configure authentication** (optional, for production)
-3. **Deploy Qdrant** for vector search
-4. **Integrate with MLflow** for artifact storage
+1. **Create SeaweedFS buckets** for different use cases (mlflow, datasets, backups)
+2. **Create Qdrant collections** for RAG (documents_general, documents_security, etc.)
+3. **Deploy embedding model** (all-MiniLM-L6-v2 via Ollama or separate service)
+4. **Build RAG pipeline** to connect documents → embeddings → Qdrant → LLM
+5. **Proceed to Phase 7** (NeMo Guardrails) or **Phase 8** (Observability)

@@ -1,0 +1,57 @@
+# =============================================================================
+# Qdrant - Vector Database for RAG
+# =============================================================================
+# Purpose: Store document embeddings for semantic search
+# ADR: ADR-006-VectorDB-Strategy.md
+#
+# Access:
+#   REST API:  https://qdrant.ai-platform.localhost
+#   gRPC:      qdrant.ai-inference.svc:6334 (internal)
+# =============================================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: qdrant
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: ai-security-platform
+    app.kubernetes.io/component: vectordb
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  
+  # Multiple sources: Helm chart + local values.yaml
+  sources:
+    # Source 1: Official Qdrant Helm chart
+    - repoURL: https://qdrant.github.io/qdrant-helm
+      chart: qdrant
+      targetRevision: 0.10.1
+      helm:
+        releaseName: qdrant
+        valueFiles:
+          - $values/argocd/applications/ai/qdrant/values.yaml
+    
+    # Source 2: Git repo containing values.yaml
+    - repoURL: https://github.com/Z3ROX-lab/ai-security-platform
+      targetRevision: master
+      ref: values
+  
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ai-inference
+  
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
