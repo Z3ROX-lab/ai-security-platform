@@ -108,16 +108,16 @@ spec:
             memory: "512Mi"
             cpu: "250m"
           limits:
-            memory: "2Gi"
-            cpu: "1000m"
-        # Longer startup time for model downloads
+            memory: "4Gi"
+            cpu: "2000m"
+        # Longer startup time for pip install + model downloads
         startupProbe:
           httpGet:
             path: /
             port: 8000
-          initialDelaySeconds: 60
-          periodSeconds: 10
-          failureThreshold: 30
+          initialDelaySeconds: 120
+          periodSeconds: 15
+          failureThreshold: 40
         livenessProbe:
           httpGet:
             path: /health
