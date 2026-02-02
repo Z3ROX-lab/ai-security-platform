@@ -77,6 +77,45 @@ output "argocd_port_forward" {
 }
 
 # -----------------------------------------------------------------------------
+# Application URLs (after ArgoCD sync)
+# -----------------------------------------------------------------------------
+
+output "application_urls" {
+  description = "Application URLs (add to /etc/hosts: 127.0.0.1 *.ai-platform.localhost)"
+  value = {
+    # Core
+    argocd      = "https://localhost:9090 (port-forward)"
+    keycloak    = "https://auth.ai-platform.localhost"
+    
+    # AI Applications
+    open_webui  = "https://chat.ai-platform.localhost"
+    
+    # Storage
+    seaweedfs_ui = "https://seaweedfs.ai-platform.localhost"
+    seaweedfs_s3 = "https://s3.ai-platform.localhost"
+    
+    # AI Data Layer
+    qdrant_api       = "https://qdrant.ai-platform.localhost"
+    qdrant_dashboard = "https://qdrant.ai-platform.localhost/dashboard"
+    rag_api          = "https://rag.ai-platform.localhost"
+    rag_swagger_ui   = "https://rag.ai-platform.localhost/docs"
+  }
+}
+
+output "hosts_file_entries" {
+  description = "Add these entries to /etc/hosts"
+  value       = <<-EOT
+    # AI Security Platform
+    127.0.0.1 auth.ai-platform.localhost
+    127.0.0.1 chat.ai-platform.localhost
+    127.0.0.1 seaweedfs.ai-platform.localhost
+    127.0.0.1 s3.ai-platform.localhost
+    127.0.0.1 qdrant.ai-platform.localhost
+    127.0.0.1 rag.ai-platform.localhost
+  EOT
+}
+
+# -----------------------------------------------------------------------------
 # Next Steps
 # -----------------------------------------------------------------------------
 
@@ -91,20 +130,43 @@ output "next_steps" {
     OIDC: ${var.oidc_enabled ? "Enabled" : "Disabled"}
     ${var.oidc_enabled ? "OIDC Issuer: ${var.oidc_issuer_url}" : ""}
     
-    Note: Longhorn not available on WSL2/Docker Desktop (shared mount limitation)
+    ═══════════════════════════════════════════════════════════════
+    STEP 1: Add hosts entries
+    ═══════════════════════════════════════════════════════════════
     
-    Next steps:
-    1. Verify cluster: kubectl get nodes
-    2. Verify storage: kubectl get storageclass
-    3. Verify ArgoCD: kubectl get pods -n argocd
-    4. Verify apps: kubectl get applications -n argocd
-    5. Port-forward ArgoCD: kubectl port-forward svc/argocd-server -n argocd 9090:443
-    6. Open ArgoCD UI: https://localhost:9090
-    7. Sync applications in ArgoCD UI
-    ${var.oidc_enabled ? "\n    OIDC Authentication (after Keycloak is deployed):" : ""}
-    ${var.oidc_enabled ? "    - Install kubelogin: kubectl krew install oidc-login" : ""}
-    ${var.oidc_enabled ? "    - Setup: kubectl oidc-login setup --oidc-issuer-url=${var.oidc_issuer_url} --oidc-client-id=${var.oidc_client_id}" : ""}
-    ${var.oidc_enabled ? "\n    Note: OIDC errors in API Server logs are NORMAL until Keycloak is running." : ""}
+    echo "127.0.0.1 auth.ai-platform.localhost chat.ai-platform.localhost" | sudo tee -a /etc/hosts
+    echo "127.0.0.1 seaweedfs.ai-platform.localhost s3.ai-platform.localhost" | sudo tee -a /etc/hosts
+    echo "127.0.0.1 qdrant.ai-platform.localhost rag.ai-platform.localhost" | sudo tee -a /etc/hosts
+    
+    ═══════════════════════════════════════════════════════════════
+    STEP 2: Verify deployment
+    ═══════════════════════════════════════════════════════════════
+    
+    kubectl get nodes
+    kubectl get applications -n argocd
+    kubectl get pods -A
+    
+    ═══════════════════════════════════════════════════════════════
+    STEP 3: Access applications
+    ═══════════════════════════════════════════════════════════════
+    
+    ArgoCD:         kubectl port-forward svc/argocd-server -n argocd 9090:443
+                    https://localhost:9090
+    
+    Keycloak:       https://auth.ai-platform.localhost
+    Open WebUI:     https://chat.ai-platform.localhost
+    SeaweedFS:      https://seaweedfs.ai-platform.localhost
+    Qdrant:         https://qdrant.ai-platform.localhost/dashboard
+    RAG API:        https://rag.ai-platform.localhost/docs
+    
+    ${var.oidc_enabled ? "═══════════════════════════════════════════════════════════════" : ""}
+    ${var.oidc_enabled ? "OIDC Authentication (after Keycloak is deployed)" : ""}
+    ${var.oidc_enabled ? "═══════════════════════════════════════════════════════════════" : ""}
+    ${var.oidc_enabled ? "" : ""}
+    ${var.oidc_enabled ? "kubectl krew install oidc-login" : ""}
+    ${var.oidc_enabled ? "kubectl oidc-login setup --oidc-issuer-url=${var.oidc_issuer_url} --oidc-client-id=${var.oidc_client_id}" : ""}
+    ${var.oidc_enabled ? "" : ""}
+    ${var.oidc_enabled ? "Note: OIDC errors in API Server logs are NORMAL until Keycloak is running." : ""}
     
   EOT
 }
