@@ -8,6 +8,7 @@ Phase 6 deploys the data infrastructure required for AI/ML workloads:
 |-----------|---------|--------|
 | **SeaweedFS** | S3-compatible object storage | ✅ Completed |
 | **Qdrant** | Vector database for RAG | ✅ Completed |
+| **RAG API** | Custom REST API for RAG pipeline | ✅ Completed |
 
 ## Architecture
 
@@ -29,14 +30,27 @@ Phase 6 deploys the data infrastructure required for AI/ML workloads:
 │  │  Filer UI: :8888        │    │  gRPC: :6334            │    │
 │  └─────────────────────────┘    └─────────────────────────┘    │
 │                                                                 │
-│  RAG PIPELINE                                                   │
+│  RAG API SERVICE                                                │
 │  ┌─────────────────────────────────────────────────────────┐   │
 │  │                                                          │   │
-│  │  Option A: Open WebUI (built-in ChromaDB)               │   │
-│  │  Option B: Custom RAG (Qdrant + Python script)          │   │
+│  │  FastAPI REST Service (python:3.11-slim)                │   │
 │  │                                                          │   │
-│  │  Document → Chunks → Embedding → Vector DB → LLM        │   │
-│  │                       (nomic-embed-text)    (Mistral)   │   │
+│  │  Endpoints:                                              │   │
+│  │  • POST /ingest  - Index documents into Qdrant          │   │
+│  │  • POST /search  - Semantic search (no LLM)             │   │
+│  │  • POST /query   - Full RAG (search + LLM generation)   │   │
+│  │  • GET  /stats   - Collection statistics                │   │
+│  │                                                          │   │
+│  │  Flow: Document → Chunks → Embedding → Qdrant → LLM     │   │
+│  │                            (nomic-embed-text)  (Mistral)│   │
+│  │                                                          │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+│  RAG OPTIONS                                                    │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │                                                          │   │
+│  │  Option A: Open WebUI (built-in ChromaDB) - Quick start │   │
+│  │  Option B: RAG API (Qdrant + FastAPI) - Production/API  │   │
 │  │                                                          │   │
 │  └─────────────────────────────────────────────────────────┘   │
 │                                                                 │
@@ -44,6 +58,9 @@ Phase 6 deploys the data infrastructure required for AI/ML workloads:
 │  • https://seaweedfs.ai-platform.localhost (Filer UI)          │
 │  • https://s3.ai-platform.localhost (S3 API)                   │
 │  • https://qdrant.ai-platform.localhost (Vector DB API)        │
+│  • https://qdrant.ai-platform.localhost/dashboard (Qdrant UI)  │
+│  • https://rag.ai-platform.localhost (RAG API)                 │
+│  • https://rag.ai-platform.localhost/docs (Swagger UI)         │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -110,6 +127,7 @@ metadata:
 | [Qdrant Guide](qdrant-guide.md) | Deploy vector database for RAG |
 | [Open WebUI RAG Guide](openwebui-rag-guide.md) | Built-in RAG with ChromaDB |
 | [Custom RAG with Qdrant](qdrant-rag-guide.md) | Python RAG pipeline with Qdrant |
+| [RAG API Demo](rag-api-demo.md) | Interactive demo with Swagger UI |
 
 ## Resource Requirements
 

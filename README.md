@@ -25,15 +25,15 @@ Enterprise-grade AI/ML platform with comprehensive security coverage, built on K
 │  │                         Traefik ✅                               │   │
 │  │  chat.ai-platform.localhost | auth.ai-platform.localhost         │   │
 │  │  seaweedfs.ai-platform.localhost | s3.ai-platform.localhost      │   │
-│  │  qdrant.ai-platform.localhost                                    │   │
+│  │  qdrant.ai-platform.localhost | rag.ai-platform.localhost        │   │
 │  └─────────────────────────────────────────────────────────────────┘   │
 │                                                                         │
 │  APPLICATIONS                                                           │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐              │
-│  │ Open     │  │ Keycloak │  │  Ollama  │  │  Qdrant  │              │
-│  │ WebUI ✅ │  │ IAM ✅   │  │ LLM ✅   │  │VectorDB✅│              │
-│  │ (Chat)   │  │  (SSO)   │  │(Mistral) │  │  (RAG)   │              │
-│  └──────────┘  └──────────┘  └──────────┘  └──────────┘              │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐ │
+│  │ Open     │  │ Keycloak │  │  Ollama  │  │  Qdrant  │  │ RAG API  │ │
+│  │ WebUI ✅ │  │ IAM ✅   │  │ LLM ✅   │  │VectorDB✅│  │  REST ✅ │ │
+│  │ (Chat)   │  │  (SSO)   │  │(Mistral) │  │  (RAG)   │  │(FastAPI) │ │
+│  └──────────┘  └──────────┘  └──────────┘  └──────────┘  └──────────┘ │
 │                                                                         │
 │  AI SECURITY                                                            │
 │  ┌──────────┐  ┌──────────┐  ┌──────────┐                             │

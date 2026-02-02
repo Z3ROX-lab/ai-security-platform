@@ -139,7 +139,32 @@ echo "  └───────────────────────
 echo ""
 
 # -----------------------------------------------------------------------------
-# 1.4 Check current cluster state
+# 1.4 Check backup contents - Qdrant
+# -----------------------------------------------------------------------------
+
+log_header "  🔢 QDRANT SNAPSHOTS TO RESTORE:"
+echo "  ┌─────────────────────────────────────────────────────────────────┐"
+
+if [ -d "$BACKUP_DIR/qdrant" ]; then
+    QDRANT_FILES=$(ls "$BACKUP_DIR/qdrant" 2>/dev/null | wc -l)
+    if [ "$QDRANT_FILES" -gt 0 ]; then
+        for SNAP_FILE in "$BACKUP_DIR/qdrant"/*; do
+            [ -f "$SNAP_FILE" ] || continue
+            FILENAME=$(basename "$SNAP_FILE")
+            FILE_SIZE=$(ls -lh "$SNAP_FILE" | awk '{print $5}')
+            echo "  │   ✓ $FILENAME ($FILE_SIZE)"
+        done
+    else
+        echo "  │   ⊘ No snapshots found (empty directory)"
+    fi
+else
+    echo "  │   ⊘ No qdrant directory in backup (will skip)"
+fi
+echo "  └─────────────────────────────────────────────────────────────────┘"
+echo ""
+
+# -----------------------------------------------------------------------------
+# 1.5 Check current cluster state
 # -----------------------------------------------------------------------------
 
 log_info "Checking current cluster state..."
@@ -148,6 +173,7 @@ POSTGRES_POD=$(kubectl get pods -n storage -l cnpg.io/cluster=postgresql-cluster
 KEYCLOAK_STATUS=$(kubectl get pods -n auth -l app.kubernetes.io/name=keycloakx -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo "Not deployed")
 WEBUI_STATUS=$(kubectl get pods -n ai-apps -l app.kubernetes.io/name=open-webui -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo "Not deployed")
 ARGOCD_STATUS=$(kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-server -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo "Not deployed")
+QDRANT_STATUS=$(kubectl get pods -n ai-inference -l app.kubernetes.io/name=qdrant -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo "Not deployed")
 
 echo ""
 log_header "  🔍 CURRENT CLUSTER STATE:"
@@ -156,6 +182,7 @@ echo "  │   ArgoCD:     $ARGOCD_STATUS"
 echo "  │   PostgreSQL: ${POSTGRES_POD:-Not deployed}"
 echo "  │   Keycloak:   $KEYCLOAK_STATUS"
 echo "  │   Open WebUI: $WEBUI_STATUS"
+echo "  │   Qdrant:     $QDRANT_STATUS"
 echo "  └─────────────────────────────────────────────────────────────────┘"
 echo ""
 
@@ -167,7 +194,7 @@ if [ -z "$POSTGRES_POD" ]; then
 fi
 
 # -----------------------------------------------------------------------------
-# 1.5 Restore plan
+# 1.6 Restore plan
 # -----------------------------------------------------------------------------
 
 log_header "  📋 RESTORE PLAN:"
@@ -176,9 +203,10 @@ echo "  │   1. Wait for PostgreSQL to be ready"
 echo "  │   2. Restore PostgreSQL roles (users/permissions)"
 echo "  │   3. Restore databases (keycloak, openwebui, etc.)"
 echo "  │   4. Restore Kubernetes secrets"
-echo "  │   5. Wait for Keycloak and Open WebUI to be deployed"
-echo "  │   6. Restart applications to load restored data"
-echo "  │   7. Verify everything is working"
+echo "  │   5. Restore Qdrant vector database snapshots"
+echo "  │   6. Wait for Keycloak and Open WebUI to be deployed"
+echo "  │   7. Restart applications to load restored data"
+echo "  │   8. Verify everything is working"
 echo "  └─────────────────────────────────────────────────────────────────┘"
 echo ""
 
@@ -309,7 +337,7 @@ echo ""
 # 2.4 Restore Secrets
 # -----------------------------------------------------------------------------
 
-log_info "Step 4/6: Restoring secrets..."
+log_info "Step 4/8: Restoring secrets..."
 
 if [ -d "$BACKUP_DIR/secrets" ]; then
     for SECRET_FILE in "$BACKUP_DIR/secrets"/*.yaml; do
@@ -345,10 +373,85 @@ fi
 echo ""
 
 # -----------------------------------------------------------------------------
-# 2.5 Wait for Applications
+# 2.5 Restore Qdrant Vector Database
 # -----------------------------------------------------------------------------
 
-log_info "Step 5/6: Waiting for applications to be deployed..."
+log_info "Step 5/8: Restoring Qdrant vector database..."
+
+if [ -d "$BACKUP_DIR/qdrant" ]; then
+    QDRANT_FILES=$(ls "$BACKUP_DIR/qdrant" 2>/dev/null | wc -l)
+    
+    if [ "$QDRANT_FILES" -gt 0 ]; then
+        # Wait for Qdrant to be ready
+        echo -n "  → Waiting for Qdrant... "
+        TIMEOUT=120
+        ELAPSED=0
+        while [ $ELAPSED -lt $TIMEOUT ]; do
+            QDRANT_POD=$(kubectl get pods -n ai-inference -l app.kubernetes.io/name=qdrant -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+            if [ -n "$QDRANT_POD" ]; then
+                STATUS=$(kubectl get pod -n ai-inference "$QDRANT_POD" -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+                if [ "$STATUS" = "Running" ]; then
+                    echo "running"
+                    break
+                fi
+            fi
+            sleep 5
+            ELAPSED=$((ELAPSED + 5))
+        done
+        
+        if [ $ELAPSED -ge $TIMEOUT ]; then
+            echo "timeout (Qdrant not ready - skipping)"
+        else
+            # Get API key
+            QDRANT_API_KEY=$(kubectl get secret -n ai-inference rag-api-qdrant-key -o jsonpath='{.data.api-key}' 2>/dev/null | base64 -d || echo "")
+            
+            if [ -n "$QDRANT_API_KEY" ]; then
+                for SNAP_FILE in "$BACKUP_DIR/qdrant"/*; do
+                    [ -f "$SNAP_FILE" ] || continue
+                    FILENAME=$(basename "$SNAP_FILE")
+                    
+                    # Extract collection name from filename (format: collection_snapshot-name)
+                    COLLECTION=$(echo "$FILENAME" | cut -d'_' -f1)
+                    
+                    echo -n "  → Restoring collection '$COLLECTION'... "
+                    
+                    # Copy snapshot to pod
+                    kubectl cp "$SNAP_FILE" "ai-inference/$QDRANT_POD:/tmp/$FILENAME" 2>/dev/null
+                    
+                    # Restore from snapshot
+                    RESTORE_RESULT=$(kubectl exec -n ai-inference $QDRANT_POD -- curl -s -X PUT \
+                        -H "api-key: $QDRANT_API_KEY" \
+                        "http://localhost:6333/collections/$COLLECTION/snapshots/upload?priority=snapshot" \
+                        -H "Content-Type: multipart/form-data" \
+                        -F "snapshot=@/tmp/$FILENAME" 2>/dev/null || echo "error")
+                    
+                    # Cleanup
+                    kubectl exec -n ai-inference $QDRANT_POD -- rm -f "/tmp/$FILENAME" 2>/dev/null
+                    
+                    if echo "$RESTORE_RESULT" | grep -q "error"; then
+                        echo "failed"
+                    else
+                        echo "done"
+                    fi
+                done
+                log_success "Qdrant restored"
+            else
+                log_warn "Qdrant API key not found - skipping restore"
+            fi
+        fi
+    else
+        log_info "No Qdrant snapshots to restore (empty directory)"
+    fi
+else
+    log_info "No Qdrant backup found (will start fresh)"
+fi
+echo ""
+
+# -----------------------------------------------------------------------------
+# 2.6 Wait for Applications
+# -----------------------------------------------------------------------------
+
+log_info "Step 6/8: Waiting for applications to be deployed..."
 
 echo -n "  → Waiting for Keycloak... "
 TIMEOUT=300
@@ -381,10 +484,10 @@ log_success "Applications deployed"
 echo ""
 
 # -----------------------------------------------------------------------------
-# 2.6 Restart Applications
+# 2.7 Restart Applications
 # -----------------------------------------------------------------------------
 
-log_info "Step 6/6: Restarting applications to load restored data..."
+log_info "Step 7/8: Restarting applications to load restored data..."
 
 echo -n "  → Restarting Keycloak... "
 if kubectl rollout restart statefulset -n auth keycloak-keycloakx &>/dev/null; then

@@ -100,6 +100,7 @@ declare -a SECRETS_TO_BACKUP=(
     "ai-apps:openwebui-oidc-secret"
     "ai-apps:postgres-superuser-creds"
     "cert-manager:ai-platform-ca-secret"
+    "ai-inference:rag-api-qdrant-key"
 )
 
 for SECRET_SPEC in "${SECRETS_TO_BACKUP[@]}"; do
@@ -137,7 +138,44 @@ echo "  └───────────────────────
 echo ""
 
 # -----------------------------------------------------------------------------
-# 1.4 What will NOT be backed up
+# 1.4 Discover Qdrant Vector Database
+# -----------------------------------------------------------------------------
+
+log_info "Scanning Qdrant..."
+
+QDRANT_POD=$(kubectl get pods -n ai-inference -l app.kubernetes.io/name=qdrant -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+
+echo ""
+log_header "  🔢 QDRANT VECTOR DATABASE TO BACKUP:"
+echo "  ┌─────────────────────────────────────────────────────────────────┐"
+if [ -n "$QDRANT_POD" ]; then
+    QDRANT_API_KEY=$(kubectl get secret -n ai-inference rag-api-qdrant-key -o jsonpath='{.data.api-key}' 2>/dev/null | base64 -d || echo "")
+    if [ -n "$QDRANT_API_KEY" ]; then
+        # Get collections via API
+        COLLECTIONS=$(kubectl exec -n ai-inference $QDRANT_POD -- curl -s -H "api-key: $QDRANT_API_KEY" http://localhost:6333/collections 2>/dev/null | grep -o '"name":"[^"]*"' | cut -d'"' -f4 || echo "")
+        if [ -n "$COLLECTIONS" ]; then
+            echo "  │   Pod: $QDRANT_POD"
+            echo "  │   ├── Collections:"
+            for COLL in $COLLECTIONS; do
+                echo "  │   │   ✓ $COLL"
+            done
+        else
+            echo "  │   Pod: $QDRANT_POD"
+            echo "  │   ├── Collections: (none found or API error)"
+        fi
+    else
+        echo "  │   Pod: $QDRANT_POD"
+        echo "  │   ├── Collections: (no API key found)"
+    fi
+    echo "  │   └── Snapshot will be created"
+else
+    echo "  │   ✗ Qdrant pod not found (will skip)"
+fi
+echo "  └─────────────────────────────────────────────────────────────────┘"
+echo ""
+
+# -----------------------------------------------------------------------------
+# 1.5 What will NOT be backed up
 # -----------------------------------------------------------------------------
 
 log_header "  ⚠️  WILL NOT BE BACKED UP:"
@@ -191,7 +229,7 @@ mkdir -p "$BACKUP_DIR/secrets"
 # 2.1 Backup PostgreSQL Databases
 # -----------------------------------------------------------------------------
 
-log_info "Step 1/4: Backing up PostgreSQL databases..."
+log_info "Step 1/5: Backing up PostgreSQL databases..."
 
 DATABASES=$(kubectl exec -n storage $POSTGRES_POD -- psql -U postgres -t -c "SELECT datname FROM pg_database WHERE datistemplate = false AND datname != 'postgres';" 2>/dev/null | tr -d ' ' | grep -v '^$')
 
@@ -213,7 +251,7 @@ echo ""
 # 2.2 Backup Secrets
 # -----------------------------------------------------------------------------
 
-log_info "Step 2/4: Backing up secrets..."
+log_info "Step 2/5: Backing up secrets..."
 
 backup_secret() {
     local namespace=$1
@@ -250,7 +288,7 @@ echo ""
 # 2.3 Backup Keycloak Realm (optional)
 # -----------------------------------------------------------------------------
 
-log_info "Step 3/4: Exporting Keycloak realm (optional)..."
+log_info "Step 3/5: Exporting Keycloak realm (optional)..."
 
 if [ -n "$KEYCLOAK_POD" ]; then
     mkdir -p "$BACKUP_DIR/keycloak-realm"
@@ -273,10 +311,67 @@ fi
 echo ""
 
 # -----------------------------------------------------------------------------
-# 2.4 Document current state
+# 2.4 Backup Qdrant Vector Database
 # -----------------------------------------------------------------------------
 
-log_info "Step 4/4: Documenting current state..."
+log_info "Step 4/5: Backing up Qdrant vector database..."
+
+if [ -n "$QDRANT_POD" ]; then
+    mkdir -p "$BACKUP_DIR/qdrant"
+    QDRANT_API_KEY=$(kubectl get secret -n ai-inference rag-api-qdrant-key -o jsonpath='{.data.api-key}' 2>/dev/null | base64 -d || echo "")
+    
+    if [ -n "$QDRANT_API_KEY" ]; then
+        # Get list of collections
+        COLLECTIONS=$(kubectl exec -n ai-inference $QDRANT_POD -- curl -s -H "api-key: $QDRANT_API_KEY" http://localhost:6333/collections 2>/dev/null | grep -o '"name":"[^"]*"' | cut -d'"' -f4 || echo "")
+        
+        for COLL in $COLLECTIONS; do
+            echo -n "  → Creating snapshot for collection '$COLL'... "
+            
+            # Create snapshot via API
+            SNAPSHOT_RESULT=$(kubectl exec -n ai-inference $QDRANT_POD -- curl -s -X POST \
+                -H "api-key: $QDRANT_API_KEY" \
+                "http://localhost:6333/collections/$COLL/snapshots" 2>/dev/null)
+            
+            SNAPSHOT_NAME=$(echo "$SNAPSHOT_RESULT" | grep -o '"name":"[^"]*"' | head -1 | cut -d'"' -f4)
+            
+            if [ -n "$SNAPSHOT_NAME" ]; then
+                # Download snapshot
+                kubectl exec -n ai-inference $QDRANT_POD -- curl -s \
+                    -H "api-key: $QDRANT_API_KEY" \
+                    "http://localhost:6333/collections/$COLL/snapshots/$SNAPSHOT_NAME" \
+                    -o "/tmp/$SNAPSHOT_NAME" 2>/dev/null
+                
+                # Copy to backup dir
+                kubectl cp "ai-inference/$QDRANT_POD:/tmp/$SNAPSHOT_NAME" "$BACKUP_DIR/qdrant/${COLL}_${SNAPSHOT_NAME}" 2>/dev/null
+                
+                # Cleanup
+                kubectl exec -n ai-inference $QDRANT_POD -- rm -f "/tmp/$SNAPSHOT_NAME" 2>/dev/null
+                
+                SIZE=$(ls -lh "$BACKUP_DIR/qdrant/${COLL}_${SNAPSHOT_NAME}" 2>/dev/null | awk '{print $5}' || echo "unknown")
+                echo "done ($SIZE)"
+            else
+                echo "failed (snapshot creation error)"
+            fi
+        done
+        
+        if [ -z "$COLLECTIONS" ]; then
+            echo "  → No collections found (empty database)"
+        fi
+        
+        log_success "Qdrant backup complete"
+    else
+        log_warn "Qdrant API key not found - skipping backup"
+    fi
+else
+    log_warn "Qdrant pod not found - skipping backup"
+fi
+echo ""
+
+# -----------------------------------------------------------------------------
+# 2.5 Document current state
+# -----------------------------------------------------------------------------
+
+log_info "Step 5/5: Documenting current state..."
 
 echo -n "  → Cluster info... "
 kubectl cluster-info > "$BACKUP_DIR/cluster-info.txt" 2>&1 && echo "done" || echo "failed"
