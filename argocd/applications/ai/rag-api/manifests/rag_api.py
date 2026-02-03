@@ -1,15 +1,21 @@
 #!/usr/bin/env python3
 """
-RAG API Service with Qdrant + Ollama
+RAG API Service with Qdrant + Ollama + Guardrails
 
 A FastAPI-based RAG service for the AI Security Platform.
 Deployed in Kubernetes via ArgoCD.
+
+Features:
+- Vector search with Qdrant
+- LLM generation with Ollama
+- Input/Output scanning with Guardrails API (LLM Guard)
 
 Author: Z3ROX - AI Security Platform
 """
 
 import os
 import hashlib
+import logging
 from typing import List, Optional
 from dataclasses import dataclass
 import requests
@@ -23,6 +29,10 @@ try:
 except ImportError:
     FASTAPI_AVAILABLE = False
 
+# Configure logging
+logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
+logger = logging.getLogger(__name__)
+
 # =============================================================================
 # Configuration
 # =============================================================================
@@ -30,19 +40,109 @@ except ImportError:
 @dataclass
 class Config:
     """RAG Configuration from environment"""
+    # Qdrant
     qdrant_url: str = os.getenv("QDRANT_URL", "http://qdrant.ai-inference.svc.cluster.local:6333")
     qdrant_api_key: str = os.getenv("QDRANT_API_KEY", "")
     collection_name: str = os.getenv("QDRANT_COLLECTION", "documents")
+    
+    # Ollama
     ollama_url: str = os.getenv("OLLAMA_URL", "http://ollama.ai-inference.svc.cluster.local:11434")
     embedding_model: str = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
     llm_model: str = os.getenv("LLM_MODEL", "mistral:7b-instruct-v0.3-q4_K_M")
+    
+    # RAG settings
     chunk_size: int = int(os.getenv("CHUNK_SIZE", "1000"))
     chunk_overlap: int = int(os.getenv("CHUNK_OVERLAP", "100"))
     top_k: int = int(os.getenv("TOP_K", "3"))
     vector_size: int = 768  # nomic-embed-text
+    
+    # Guardrails
+    guardrails_url: str = os.getenv("GUARDRAILS_URL", "http://guardrails-api.ai-inference.svc.cluster.local:8000")
+    guardrails_enabled: bool = os.getenv("GUARDRAILS_ENABLED", "true").lower() == "true"
 
 
 config = Config()
+
+
+# =============================================================================
+# Guardrails Client
+# =============================================================================
+
+class GuardrailsClient:
+    """Client for Guardrails API (LLM Guard)"""
+    
+    def __init__(self, base_url: str, enabled: bool = True):
+        self.base_url = base_url.rstrip("/")
+        self.enabled = enabled
+        self._available = None
+    
+    def is_available(self) -> bool:
+        """Check if Guardrails API is available"""
+        if not self.enabled:
+            return False
+        
+        if self._available is None:
+            try:
+                response = requests.get(f"{self.base_url}/health", timeout=5)
+                self._available = response.status_code == 200
+            except:
+                self._available = False
+        
+        return self._available
+    
+    def scan_input(self, prompt: str) -> dict:
+        """
+        Scan input prompt for security issues.
+        
+        Returns:
+            dict with keys: is_valid, sanitized, risk_score, scanners, blocked_reason
+        """
+        if not self.enabled:
+            return {"is_valid": True, "sanitized": prompt, "risk_score": 0, "guardrails": "disabled"}
+        
+        try:
+            response = requests.post(
+                f"{self.base_url}/scan/input",
+                json={"prompt": prompt},
+                timeout=30
+            )
+            response.raise_for_status()
+            result = response.json()
+            
+            # Add blocked reason if invalid
+            if not result.get("is_valid", True):
+                blocked_scanners = [s["name"] for s in result.get("scanners", []) if not s.get("is_valid", True)]
+                result["blocked_reason"] = f"Blocked by: {', '.join(blocked_scanners)}"
+            
+            return result
+            
+        except requests.exceptions.RequestException as e:
+            logger.warning(f"Guardrails input scan failed: {e}")
+            # Fail open if guardrails unavailable (configurable)
+            return {"is_valid": True, "sanitized": prompt, "risk_score": 0, "error": str(e)}
+    
+    def scan_output(self, prompt: str, output: str) -> dict:
+        """
+        Scan LLM output for security issues (PII, etc).
+        
+        Returns:
+            dict with keys: is_valid, sanitized, risk_score, scanners
+        """
+        if not self.enabled:
+            return {"is_valid": True, "sanitized": output, "risk_score": 0, "guardrails": "disabled"}
+        
+        try:
+            response = requests.post(
+                f"{self.base_url}/scan/output",
+                json={"prompt": prompt, "output": output},
+                timeout=30
+            )
+            response.raise_for_status()
+            return response.json()
+            
+        except requests.exceptions.RequestException as e:
+            logger.warning(f"Guardrails output scan failed: {e}")
+            return {"is_valid": True, "sanitized": output, "risk_score": 0, "error": str(e)}
 
 
 # =============================================================================
@@ -180,15 +280,16 @@ def generate_id(text: str, source: str) -> str:
 
 
 # =============================================================================
-# RAG Pipeline
+# RAG Pipeline with Guardrails
 # =============================================================================
 
 class RAGPipeline:
-    """RAG Pipeline using Qdrant + Ollama"""
+    """RAG Pipeline using Qdrant + Ollama + Guardrails"""
     
     def __init__(self):
         self.ollama = OllamaClient(config.ollama_url)
         self.qdrant = QdrantClient(config.qdrant_url, config.qdrant_api_key)
+        self.guardrails = GuardrailsClient(config.guardrails_url, config.guardrails_enabled)
         self._ensure_collection()
     
     def _ensure_collection(self):
@@ -222,16 +323,53 @@ class RAGPipeline:
         return self.qdrant.search(config.collection_name, query_embedding, limit=top_k)
     
     def query(self, question: str, top_k: int = None) -> dict:
-        """Full RAG query: search + generate"""
+        """
+        Full RAG query with Guardrails protection:
+        1. Scan input for prompt injection / toxicity
+        2. If blocked, return error
+        3. Search Qdrant for context
+        4. Generate answer with Ollama
+        5. Scan output for PII leakage
+        6. Return sanitized response
+        """
+        
+        # =====================================================================
+        # STEP 1: INPUT GUARDRAILS
+        # =====================================================================
+        input_scan = self.guardrails.scan_input(question)
+        
+        if not input_scan.get("is_valid", True):
+            logger.warning(f"Query blocked by guardrails: {input_scan.get('blocked_reason', 'unknown')}")
+            return {
+                "answer": None,
+                "blocked": True,
+                "blocked_reason": input_scan.get("blocked_reason", "Query blocked by security guardrails"),
+                "guardrails": {
+                    "input_scan": input_scan,
+                    "output_scan": None
+                },
+                "sources": [],
+                "context": ""
+            }
+        
+        # =====================================================================
+        # STEP 2: RAG SEARCH (Qdrant)
+        # =====================================================================
         results = self.search(question, top_k)
         
         if not results:
             return {
                 "answer": "I couldn't find any relevant information.",
+                "blocked": False,
                 "sources": [],
-                "context": ""
+                "context": "",
+                "guardrails": {
+                    "input_scan": input_scan,
+                    "output_scan": None
+                }
             }
         
+        # Build context from search results
         context_parts = []
         sources = []
         for i, result in enumerate(results):
@@ -245,6 +383,9 @@ class RAGPipeline:
         
         context = "\n\n".join(context_parts)
         
+        # =====================================================================
+        # STEP 3: LLM GENERATION (Ollama)
+        # =====================================================================
         system_prompt = """You are a helpful assistant that answers questions based on the provided context.
 Use ONLY the information from the context to answer. If the context doesn't contain enough information, say so.
 Always cite the source when providing information."""
@@ -256,18 +397,54 @@ Question: {question}
 
 Answer based on the context above:"""
 
-        answer = self.ollama.chat(user_prompt, system=system_prompt)
+        raw_answer = self.ollama.chat(user_prompt, system=system_prompt)
         
-        return {"answer": answer, "sources": sources, "context": context}
+        # =====================================================================
+        # STEP 4: OUTPUT GUARDRAILS (PII Redaction)
+        # =====================================================================
+        output_scan = self.guardrails.scan_output(question, raw_answer)
+        
+        # Use sanitized output (PII redacted) if available
+        final_answer = output_scan.get("sanitized", raw_answer)
+        
+        # Check if output was blocked (not just redacted)
+        output_blocked = not output_scan.get("is_valid", True) and output_scan.get("risk_score", 0) > 0.9
+        
+        return {
+            "answer": final_answer,
+            "blocked": output_blocked,
+            "sources": sources,
+            "context": context,
+            "guardrails": {
+                "input_scan": {
+                    "is_valid": input_scan.get("is_valid"),
+                    "risk_score": input_scan.get("risk_score"),
+                    "latency_ms": input_scan.get("latency_ms")
+                },
+                "output_scan": {
+                    "is_valid": output_scan.get("is_valid"),
+                    "risk_score": output_scan.get("risk_score"),
+                    "latency_ms": output_scan.get("latency_ms"),
+                    "pii_redacted": output_scan.get("sanitized") != raw_answer
+                }
+            }
+        }
     
     def stats(self) -> dict:
         """Get collection statistics"""
         count = self.qdrant.count(config.collection_name)
         collections = self.qdrant.get_collections()
+        guardrails_available = self.guardrails.is_available()
+        
         return {
             "collection": config.collection_name,
             "document_count": count,
             "all_collections": collections,
+            "guardrails": {
+                "enabled": config.guardrails_enabled,
+                "available": guardrails_available,
+                "url": config.guardrails_url
+            },
             "config": {
                 "qdrant_url": config.qdrant_url,
                 "ollama_url": config.ollama_url,
@@ -291,8 +468,8 @@ Answer based on the context above:"""
 if FASTAPI_AVAILABLE:
     app = FastAPI(
         title="RAG API",
-        description="Retrieval-Augmented Generation API with Qdrant + Ollama",
-        version="1.0.0"
+        description="Retrieval-Augmented Generation API with Qdrant + Ollama + Guardrails",
+        version="2.0.0"
     )
     
     # Pydantic models
@@ -321,7 +498,7 @@ if FASTAPI_AVAILABLE:
     @app.get("/")
     def root():
         """Health check"""
-        return {"status": "ok", "service": "rag-api"}
+        return {"status": "ok", "service": "rag-api", "version": "2.0.0", "guardrails": config.guardrails_enabled}
     
     @app.get("/health")
     def health():
@@ -329,7 +506,12 @@ if FASTAPI_AVAILABLE:
         try:
             rag = get_rag()
             stats = rag.stats()
-            return {"status": "healthy", "qdrant": "connected", "documents": stats["document_count"]}
+            return {
+                "status": "healthy",
+                "qdrant": "connected",
+                "documents": stats["document_count"],
+                "guardrails": stats["guardrails"]
+            }
         except Exception as e:
             return JSONResponse(status_code=503, content={"status": "unhealthy", "error": str(e)})
     
@@ -360,7 +542,17 @@ if FASTAPI_AVAILABLE:
     
     @app.post("/query")
     def query(request: QueryRequest):
-        """Full RAG query: search + generate"""
+        """
+        Full RAG query with Guardrails protection.
+        
+        Flow:
+        1. Input scan (prompt injection, toxicity)
+        2. Vector search (Qdrant)
+        3. LLM generation (Ollama)
+        4. Output scan (PII redaction)
+        
+        Response includes guardrails metadata showing what was scanned/blocked.
+        """
         try:
             return get_rag().query(request.question, request.top_k)
         except Exception as e:
@@ -406,10 +598,19 @@ if __name__ == "__main__":
         elif cmd == "query" and len(sys.argv) > 2:
             question = " ".join(sys.argv[2:])
             result = rag.query(question)
-            print(f"\n📝 Answer:\n{result['answer']}")
-            print(f"\n📚 Sources:")
-            for src in result["sources"]:
-                print(f"   - {src['source']} (score: {src['score']:.3f})")
+            
+            if result.get("blocked"):
+                print(f"\n🚫 Query BLOCKED: {result.get('blocked_reason')}")
+            else:
+                print(f"\n📝 Answer:\n{result['answer']}")
+                print(f"\n📚 Sources:")
+                for src in result["sources"]:
+                    print(f"   - {src['source']} (score: {src['score']:.3f})")
+            
+            if result.get("guardrails"):
+                print(f"\n🛡️ Guardrails:")
+                print(f"   Input scan: {result['guardrails'].get('input_scan', {})}")
+                print(f"   Output scan: {result['guardrails'].get('output_scan', {})}")
         
         elif cmd == "ingest" and len(sys.argv) > 2:
             for filepath in sys.argv[2:]:

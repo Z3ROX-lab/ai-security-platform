@@ -1,24 +1,8 @@
 # =============================================================================
-# RAG API Kubernetes Manifests
-# =============================================================================
-# Deploys a FastAPI-based RAG service using Qdrant + Ollama
-# No custom image needed - uses public python:3.11-slim with ConfigMap
+# RAG API Kubernetes Manifests (Phase 6 + Guardrails Integration)
 # =============================================================================
 
 ---
-# NOTE: Create this secret manually with the Qdrant API key:
-#
-# 1. Get the actual key from the Qdrant pod:
-#    kubectl exec -n ai-inference qdrant-0 -- cat /qdrant/config/local.yaml
-#
-# 2. Create the secret:
-#    kubectl create secret generic rag-api-qdrant-key \
-#      --from-literal=api-key="<key-from-step-1>" \
-#      -n ai-inference
-#
-# Or use SealedSecrets for GitOps (recommended)
----
-
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -26,19 +10,28 @@ metadata:
   namespace: ai-inference
   labels:
     app: rag-api
-    app.kubernetes.io/name: rag-api
-    app.kubernetes.io/component: config
 data:
-  # Environment configuration
+  # Qdrant
   QDRANT_URL: "http://qdrant.ai-inference.svc.cluster.local:6333"
-  OLLAMA_URL: "http://ollama.ai-inference.svc.cluster.local:11434"
   QDRANT_COLLECTION: "documents"
+  
+  # Ollama
+  OLLAMA_URL: "http://ollama.ai-inference.svc.cluster.local:11434"
   EMBEDDING_MODEL: "nomic-embed-text"
   LLM_MODEL: "mistral:7b-instruct-v0.3-q4_K_M"
+  
+  # RAG settings
   CHUNK_SIZE: "1000"
   CHUNK_OVERLAP: "100"
   TOP_K: "3"
+  
+  # Guardrails (Phase 7a integration)
+  GUARDRAILS_URL: "http://guardrails-api.ai-inference.svc.cluster.local:8000"
+  GUARDRAILS_ENABLED: "true"
+  
+  # Service
   PORT: "8000"
+  LOG_LEVEL: "INFO"
 
 ---
 apiVersion: v1
@@ -48,14 +41,12 @@ metadata:
   namespace: ai-inference
   labels:
     app: rag-api
-    app.kubernetes.io/name: rag-api
-    app.kubernetes.io/component: script
 data:
   requirements.txt: |
     fastapi>=0.109.0
     uvicorn>=0.27.0
-    requests>=2.31.0
     pydantic>=2.5.0
+    requests>=2.31.0
 
   startup.sh: |
     #!/bin/bash
@@ -64,7 +55,7 @@ data:
     echo "📦 Installing dependencies..."
     pip install --no-cache-dir -q -r /app/requirements.txt
     
-    echo "🚀 Starting RAG API..."
+    echo "🚀 Starting RAG API v2 (with Guardrails)..."
     cd /app
     exec python rag_api.py serve
 
@@ -106,8 +97,9 @@ spec:
             secretKeyRef:
               name: rag-api-qdrant-key
               key: api-key
+              optional: true
         volumeMounts:
-        - name: script
+        - name: code
           mountPath: /app/rag_api.py
           subPath: rag_api.py
         - name: startup
@@ -123,22 +115,29 @@ spec:
           limits:
             memory: "512Mi"
             cpu: "500m"
+        startupProbe:
+          httpGet:
+            path: /
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          failureThreshold: 12
         livenessProbe:
           httpGet:
             path: /health
             port: 8000
-          initialDelaySeconds: 60
+          initialDelaySeconds: 10
           periodSeconds: 30
           timeoutSeconds: 10
         readinessProbe:
           httpGet:
             path: /health
             port: 8000
-          initialDelaySeconds: 30
+          initialDelaySeconds: 10
           periodSeconds: 10
           timeoutSeconds: 5
       volumes:
-      - name: script
+      - name: code
         configMap:
           name: rag-api-code
       - name: startup
@@ -154,7 +153,6 @@ metadata:
   namespace: ai-inference
   labels:
     app: rag-api
-    app.kubernetes.io/name: rag-api
 spec:
   type: ClusterIP
   selector:
@@ -173,7 +171,6 @@ metadata:
   namespace: ai-inference
   labels:
     app: rag-api
-    app.kubernetes.io/name: rag-api
   annotations:
     cert-manager.io/cluster-issuer: "ai-platform-ca-issuer"
     traefik.ingress.kubernetes.io/router.tls: "true"
