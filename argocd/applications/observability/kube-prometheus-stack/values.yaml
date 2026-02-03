@@ -1,0 +1,207 @@
+# kube-prometheus-stack values for AI Security Platform
+# Includes: Prometheus, Grafana, Alertmanager, node-exporter, kube-state-metrics
+
+# =============================================================================
+# Prometheus
+# =============================================================================
+prometheus:
+  prometheusSpec:
+    retention: 7d
+    resources:
+      requests:
+        memory: "512Mi"
+        cpu: "200m"
+      limits:
+        memory: "1Gi"
+        cpu: "500m"
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: local-path
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 10Gi
+    # Scrape all namespaces
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    annotations:
+      cert-manager.io/cluster-issuer: "ai-platform-ca-issuer"
+    hosts:
+      - prometheus.ai-platform.localhost
+    tls:
+      - secretName: prometheus-tls
+        hosts:
+          - prometheus.ai-platform.localhost
+
+# =============================================================================
+# Alertmanager
+# =============================================================================
+alertmanager:
+  alertmanagerSpec:
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "50m"
+      limits:
+        memory: "128Mi"
+        cpu: "100m"
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: local-path
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 1Gi
+
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    annotations:
+      cert-manager.io/cluster-issuer: "ai-platform-ca-issuer"
+    hosts:
+      - alertmanager.ai-platform.localhost
+    tls:
+      - secretName: alertmanager-tls
+        hosts:
+          - alertmanager.ai-platform.localhost
+
+# =============================================================================
+# Grafana
+# =============================================================================
+grafana:
+  adminPassword: "admin123!"  # Change in production!
+  
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "200m"
+
+  persistence:
+    enabled: true
+    storageClassName: local-path
+    size: 5Gi
+
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    annotations:
+      cert-manager.io/cluster-issuer: "ai-platform-ca-issuer"
+    hosts:
+      - grafana.ai-platform.localhost
+    tls:
+      - secretName: grafana-tls
+        hosts:
+          - grafana.ai-platform.localhost
+
+  # Default datasources (Prometheus auto-configured)
+  sidecar:
+    dashboards:
+      enabled: true
+      searchNamespace: ALL
+    datasources:
+      enabled: true
+
+  # Additional datasources (for Loki later)
+  additionalDataSources: []
+  # Will add Loki in Phase 8b:
+  # - name: Loki
+  #   type: loki
+  #   url: http://loki:3100
+
+  # Grafana plugins
+  plugins:
+    - grafana-piechart-panel
+
+# =============================================================================
+# Node Exporter (host metrics)
+# =============================================================================
+nodeExporter:
+  resources:
+    requests:
+      memory: "32Mi"
+      cpu: "50m"
+    limits:
+      memory: "64Mi"
+      cpu: "100m"
+
+# =============================================================================
+# Kube State Metrics
+# =============================================================================
+kubeStateMetrics:
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "50m"
+    limits:
+      memory: "128Mi"
+      cpu: "100m"
+
+# =============================================================================
+# Prometheus Operator
+# =============================================================================
+prometheusOperator:
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "200m"
+
+# =============================================================================
+# Disable components not needed for home lab
+# =============================================================================
+kubeProxy:
+  enabled: false  # K3s doesn't use kube-proxy
+
+kubeEtcd:
+  enabled: false  # K3s uses embedded etcd differently
+
+kubeControllerManager:
+  enabled: false  # K3s bundles this
+
+kubeScheduler:
+  enabled: false  # K3s bundles this
+
+# =============================================================================
+# Default rules and alerts
+# =============================================================================
+defaultRules:
+  create: true
+  rules:
+    alertmanager: true
+    etcd: false  # K3s embedded
+    configReloaders: true
+    general: true
+    k8s: true
+    kubeApiserverAvailability: true
+    kubeApiserverBurnrate: true
+    kubeApiserverHistogram: true
+    kubeApiserverSlos: true
+    kubeControllerManager: false  # K3s bundled
+    kubelet: true
+    kubeProxy: false  # K3s doesn't use
+    kubePrometheusGeneral: true
+    kubePrometheusNodeRecording: true
+    kubernetesApps: true
+    kubernetesResources: true
+    kubernetesStorage: true
+    kubernetesSystem: true
+    kubeScheduler: false  # K3s bundled
+    kubeStateMetrics: true
+    network: true
+    node: true
+    nodeExporterAlerting: true
+    nodeExporterRecording: true
+    prometheus: true
+    prometheusOperator: true
