@@ -1,0 +1,67 @@
+# Kyverno - Policy Engine for Kubernetes
+# Admission control, validation, mutation, generation
+
+# =============================================================================
+# Admission Controller
+# =============================================================================
+admissionController:
+  replicas: 1
+  
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 384Mi
+
+# =============================================================================
+# Background Controller (policy reports)
+# =============================================================================
+backgroundController:
+  replicas: 1
+  
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+# =============================================================================
+# Cleanup Controller
+# =============================================================================
+cleanupController:
+  replicas: 1
+  
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+# =============================================================================
+# Reports Controller
+# =============================================================================
+reportsController:
+  replicas: 1
+  
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+# =============================================================================
+# Features
+# =============================================================================
+features:
+  policyExceptions:
+    enabled: true
+  logging:
+    format: json

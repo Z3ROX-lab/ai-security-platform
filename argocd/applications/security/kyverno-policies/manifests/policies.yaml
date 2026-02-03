@@ -1,0 +1,211 @@
+# Kyverno Policies for AI Security Platform
+---
+# =============================================================================
+# Policy 1: Require Resource Limits
+# Prevents DoS (OWASP LLM04)
+# =============================================================================
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-resource-limits
+  annotations:
+    policies.kyverno.io/title: Require Resource Limits
+    policies.kyverno.io/category: Best Practices
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Pod
+    policies.kyverno.io/description: >-
+      Requires all containers to have resource limits defined.
+      Prevents DoS attacks (OWASP LLM04).
+spec:
+  validationFailureAction: Audit  # Change to Enforce in production
+  background: true
+  rules:
+    - name: check-resource-limits
+      match:
+        any:
+        - resources:
+            kinds:
+              - Pod
+            namespaces:
+              - ai-inference
+              - ai-apps
+      validate:
+        message: "Resource limits are required for AI workloads (OWASP LLM04)"
+        pattern:
+          spec:
+            containers:
+              - resources:
+                  limits:
+                    memory: "?*"
+                    cpu: "?*"
+---
+# =============================================================================
+# Policy 2: Disallow Privileged Containers
+# Prevents container escape
+# =============================================================================
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-privileged-containers
+  annotations:
+    policies.kyverno.io/title: Disallow Privileged Containers
+    policies.kyverno.io/category: Pod Security
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Pod
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: deny-privileged
+      match:
+        any:
+        - resources:
+            kinds:
+              - Pod
+      exclude:
+        any:
+        - resources:
+            namespaces:
+              - kube-system
+              - falco
+      validate:
+        message: "Privileged containers are not allowed"
+        pattern:
+          spec:
+            containers:
+              - securityContext:
+                  privileged: "!true"
+---
+# =============================================================================
+# Policy 3: Require Non-Root User
+# Defense in depth
+# =============================================================================
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-non-root
+  annotations:
+    policies.kyverno.io/title: Require Non-Root User
+    policies.kyverno.io/category: Pod Security
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Pod
+spec:
+  validationFailureAction: Audit  # Many images still run as root
+  background: true
+  rules:
+    - name: check-non-root
+      match:
+        any:
+        - resources:
+            kinds:
+              - Pod
+            namespaces:
+              - ai-inference
+              - ai-apps
+      validate:
+        message: "Containers should run as non-root user"
+        pattern:
+          spec:
+            containers:
+              - securityContext:
+                  runAsNonRoot: true
+---
+# =============================================================================
+# Policy 4: Disallow Latest Tag
+# Supply chain security (OWASP LLM05)
+# =============================================================================
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-latest-tag
+  annotations:
+    policies.kyverno.io/title: Disallow Latest Tag
+    policies.kyverno.io/category: Supply Chain
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Pod
+    policies.kyverno.io/description: >-
+      Disallows use of ':latest' tag for container images.
+      Ensures reproducible deployments (OWASP LLM05).
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: deny-latest-tag
+      match:
+        any:
+        - resources:
+            kinds:
+              - Pod
+            namespaces:
+              - ai-inference
+              - ai-apps
+      validate:
+        message: "Using ':latest' tag is not allowed. Specify a version tag."
+        pattern:
+          spec:
+            containers:
+              - image: "!*:latest"
+---
+# =============================================================================
+# Policy 5: Add Default Network Policy Labels
+# Auto-label pods for network policies
+# =============================================================================
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: add-network-policy-labels
+  annotations:
+    policies.kyverno.io/title: Add Network Policy Labels
+    policies.kyverno.io/category: Networking
+    policies.kyverno.io/severity: low
+    policies.kyverno.io/subject: Pod
+spec:
+  rules:
+    - name: add-ai-labels
+      match:
+        any:
+        - resources:
+            kinds:
+              - Pod
+            namespaces:
+              - ai-inference
+              - ai-apps
+      mutate:
+        patchStrategicMerge:
+          metadata:
+            labels:
+              ai-platform/component: "true"
+---
+# =============================================================================
+# Policy 6: Require Probes for AI Workloads
+# Ensure proper health checks
+# =============================================================================
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-probes
+  annotations:
+    policies.kyverno.io/title: Require Probes
+    policies.kyverno.io/category: Best Practices
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Pod
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: check-readiness-probe
+      match:
+        any:
+        - resources:
+            kinds:
+              - Pod
+            namespaces:
+              - ai-inference
+              - ai-apps
+      validate:
+        message: "Readiness probe is required for AI workloads"
+        pattern:
+          spec:
+            containers:
+              - readinessProbe:
+                  periodSeconds: ">0"
