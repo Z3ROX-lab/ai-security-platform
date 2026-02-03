@@ -20,9 +20,6 @@ falco:
   grpc:
     enabled: true
     threadiness: 8
-  
-  grpcOutput:
-    enabled: true
 
 # =============================================================================
 # Driver - eBPF (modern, no kernel module)
@@ -72,20 +69,6 @@ customRules:
         (user=%user.name command=%proc.cmdline file=%fd.name container=%container.name)
       priority: WARNING
       tags: [ai-security, model-theft, OWASP-LLM10]
-
-    # Detect potential data exfiltration from AI namespace
-    - rule: AI Namespace Network Anomaly
-      desc: Detect unexpected outbound connections from AI components
-      condition: >
-        outbound and 
-        container and 
-        k8s.ns.name in (ai-inference, ai-apps) and
-        not fd.sip in (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16)
-      output: >
-        Unexpected external connection from AI component 
-        (user=%user.name command=%proc.cmdline connection=%fd.name container=%container.name namespace=%k8s.ns.name)
-      priority: WARNING
-      tags: [ai-security, data-exfiltration, network]
 
     # Detect shell spawned in AI containers
     - rule: Shell in AI Container

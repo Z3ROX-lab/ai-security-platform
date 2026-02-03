@@ -58,6 +58,19 @@ reportsController:
       memory: 128Mi
 
 # =============================================================================
+# CRDs cleanup - fix image
+# =============================================================================
+crds:
+  migration:
+    enabled: false
+
+cleanupJobs:
+  admissionReports:
+    enabled: false
+  clusterAdmissionReports:
+    enabled: false
+
+# =============================================================================
 # Features
 # =============================================================================
 features:
