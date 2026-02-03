@@ -1,0 +1,115 @@
+# Kyverno Policy - Verify Image Signatures with Cosign
+# OWASP LLM05 - Supply Chain Security
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: verify-image-signatures
+  annotations:
+    policies.kyverno.io/title: Verify Image Signatures
+    policies.kyverno.io/category: Supply Chain Security
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Pod
+    policies.kyverno.io/description: >-
+      Verifies that container images are signed with Cosign.
+      Implements OWASP LLM05 (Supply Chain Vulnerabilities).
+spec:
+  validationFailureAction: Audit  # Change to Enforce when ready
+  background: true
+  webhookTimeoutSeconds: 30
+  rules:
+    # Rule for AI Platform images (custom images)
+    - name: verify-ai-platform-images
+      match:
+        any:
+        - resources:
+            kinds:
+              - Pod
+            namespaces:
+              - ai-inference
+              - ai-apps
+      verifyImages:
+        - imageReferences:
+            - "ghcr.io/z3rox-lab/*"
+          attestors:
+            - count: 1
+              entries:
+                - keys:
+                    publicKeys: |-
+                      -----BEGIN PUBLIC KEY-----
+                      MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE... # Replace with your public key
+                      -----END PUBLIC KEY-----
+          mutateDigest: true
+          verifyDigest: true
+---
+# Alternative: Keyless verification with Sigstore (Fulcio + Rekor)
+# Easier to set up, uses OIDC identity
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: verify-image-keyless
+  annotations:
+    policies.kyverno.io/title: Verify Image Signatures (Keyless)
+    policies.kyverno.io/category: Supply Chain Security
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Pod
+    policies.kyverno.io/description: >-
+      Verifies images using Sigstore keyless signing (Fulcio + Rekor).
+      Checks that images were signed by a specific GitHub Actions workflow.
+spec:
+  validationFailureAction: Audit
+  background: true
+  webhookTimeoutSeconds: 30
+  rules:
+    - name: verify-github-actions-signature
+      match:
+        any:
+        - resources:
+            kinds:
+              - Pod
+            namespaces:
+              - ai-inference
+              - ai-apps
+      verifyImages:
+        - imageReferences:
+            - "ghcr.io/z3rox-lab/*"
+          attestors:
+            - count: 1
+              entries:
+                - keyless:
+                    subject: "https://github.com/Z3ROX-lab/*"
+                    issuer: "https://token.actions.githubusercontent.com"
+                    rekor:
+                      url: https://rekor.sigstore.dev
+          mutateDigest: true
+          verifyDigest: true
+---
+# Policy to require signed images from specific registries
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-signed-images
+  annotations:
+    policies.kyverno.io/title: Require Signed Images
+    policies.kyverno.io/category: Supply Chain Security
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Pod
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: check-signature-annotation
+      match:
+        any:
+        - resources:
+            kinds:
+              - Pod
+            namespaces:
+              - ai-inference
+              - ai-apps
+      validate:
+        message: "Images from ghcr.io/z3rox-lab must be signed. Add 'cosign.sigstore.dev/signed: true' annotation or sign the image."
+        pattern:
+          metadata:
+            annotations:
+              cosign.sigstore.dev/signed: "true"

@@ -548,6 +548,310 @@ Visualiser les tentatives de prompt injection bloquées.
 
 ---
 
+## Démo 10: Falco - Runtime Security
+
+### Objectif
+Détecter les menaces runtime avec Falco.
+
+### 10.1 Vérifier le déploiement
+
+```bash
+# Pods Falco (DaemonSet)
+kubectl get pods -n falco
+
+# Logs Falco
+kubectl logs -n falco -l app.kubernetes.io/name=falco -f
+```
+
+### 10.2 Voir les alertes Falco dans Grafana/Loki
+
+```logql
+{namespace="falco"} | json | line_format "{{.priority}} {{.rule}} {{.output}}"
+```
+
+### 10.3 Test 1: Shell dans un container AI
+
+```bash
+# Exécuter un shell dans un pod AI (déclenche une alerte)
+kubectl exec -it -n ai-inference deploy/rag-api -- /bin/sh -c "whoami"
+
+# Vérifier les logs Falco
+kubectl logs -n falco -l app.kubernetes.io/name=falco --tail=20 | grep -i shell
+```
+
+Alerte attendue:
+```json
+{
+  "priority": "Notice",
+  "rule": "Shell in AI Container",
+  "output": "Shell spawned in AI container (user=root shell=sh container=rag-api namespace=ai-inference)"
+}
+```
+
+### 10.4 Test 2: Accès aux secrets
+
+```bash
+# Lire un fichier secret (déclenche une alerte)
+kubectl exec -it -n ai-inference deploy/rag-api -- cat /var/run/secrets/kubernetes.io/serviceaccount/token
+
+# Vérifier
+kubectl logs -n falco -l app.kubernetes.io/name=falco --tail=10 | grep -i secret
+```
+
+### 10.5 Test 3: Tentative d'exfiltration (simulée)
+
+```bash
+# Simuler une connexion externe depuis un pod AI
+kubectl exec -it -n ai-inference deploy/rag-api -- curl -s https://example.com --max-time 5 || true
+
+# Vérifier les alertes réseau
+kubectl logs -n falco -l app.kubernetes.io/name=falco --tail=10 | grep -i network
+```
+
+### 10.6 Falcosidekick UI
+
+Si activé, accéder à la UI:
+```bash
+kubectl port-forward -n falco svc/falco-falcosidekick-ui 2802:2802
+# Ouvrir http://localhost:2802
+```
+
+---
+
+## Démo 11: Kyverno - Policy Enforcement
+
+### Objectif
+Tester les politiques d'admission Kyverno.
+
+### 11.1 Vérifier le déploiement
+
+```bash
+# Pods Kyverno
+kubectl get pods -n kyverno
+
+# Policies installées
+kubectl get clusterpolicy
+
+# Détails d'une policy
+kubectl describe clusterpolicy require-resource-limits
+```
+
+### 11.2 Voir les Policy Reports
+
+```bash
+# Rapports par namespace
+kubectl get policyreport -A
+
+# Détails des violations
+kubectl describe policyreport -n ai-inference
+```
+
+### 11.3 Test 1: Pod sans resource limits (VIOLATION)
+
+```bash
+# Créer un pod sans limits
+cat <<EOF | kubectl apply -f - --dry-run=server
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-no-limits
+  namespace: ai-inference
+spec:
+  containers:
+  - name: test
+    image: nginx:latest
+EOF
+
+# Résultat (mode Audit): Warning affiché
+# Résultat (mode Enforce): Rejeté
+```
+
+### 11.4 Test 2: Container privileged (BLOQUÉ)
+
+```bash
+# Tenter de créer un container privileged
+cat <<EOF | kubectl apply -f - --dry-run=server
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-privileged
+  namespace: ai-inference
+spec:
+  containers:
+  - name: test
+    image: nginx:1.25
+    securityContext:
+      privileged: true
+EOF
+
+# Résultat: Error - Privileged containers are not allowed
+```
+
+### 11.5 Test 3: Image avec tag :latest (VIOLATION)
+
+```bash
+# Créer un pod avec :latest
+cat <<EOF | kubectl apply -f - --dry-run=server
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-latest
+  namespace: ai-inference
+spec:
+  containers:
+  - name: test
+    image: nginx:latest
+    resources:
+      limits:
+        memory: "128Mi"
+        cpu: "100m"
+EOF
+
+# Résultat (mode Audit): Warning - Using ':latest' tag is not allowed
+```
+
+### 11.6 Test 4: Pod conforme (ACCEPTÉ)
+
+```bash
+# Créer un pod conforme à toutes les policies
+cat <<EOF | kubectl apply -f - --dry-run=server
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-compliant
+  namespace: ai-inference
+spec:
+  containers:
+  - name: test
+    image: nginx:1.25
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "50m"
+      limits:
+        memory: "128Mi"
+        cpu: "100m"
+    readinessProbe:
+      httpGet:
+        path: /
+        port: 80
+      periodSeconds: 10
+EOF
+
+# Résultat: Pod créé sans warnings ✅
+```
+
+### 11.7 Metrics Kyverno dans Prometheus
+
+```promql
+# Policies appliquées
+kyverno_policy_results_total
+
+# Violations par policy
+kyverno_policy_results_total{rule_result="fail"}
+
+# Admissions bloquées
+kyverno_admission_requests_total{resource_request_operation="CREATE", success="false"}
+```
+
+---
+
+## Démo 12: Cosign - Image Signature Verification
+
+### Objectif
+Démontrer la vérification des signatures d'images.
+
+### 12.1 Installer Cosign
+
+```bash
+# Linux
+curl -sSL https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64 -o /usr/local/bin/cosign
+chmod +x /usr/local/bin/cosign
+
+# Vérifier
+cosign version
+```
+
+### 12.2 Générer une paire de clés
+
+```bash
+# Créer répertoire
+mkdir -p ~/.cosign && cd ~/.cosign
+
+# Générer les clés
+cosign generate-key-pair
+
+# Fichiers créés:
+# - cosign.key (privée - GARDER SECRÈTE)
+# - cosign.pub (publique - à distribuer)
+```
+
+### 12.3 Signer une image
+
+```bash
+# Build et push une image de test
+docker build -t ghcr.io/z3rox-lab/demo-app:v1.0.0 .
+docker push ghcr.io/z3rox-lab/demo-app:v1.0.0
+
+# Signer
+cosign sign --key ~/.cosign/cosign.key ghcr.io/z3rox-lab/demo-app:v1.0.0
+
+# Vérifier
+cosign verify --key ~/.cosign/cosign.pub ghcr.io/z3rox-lab/demo-app:v1.0.0
+```
+
+### 12.4 Voir l'arbre de signatures
+
+```bash
+cosign tree ghcr.io/z3rox-lab/demo-app:v1.0.0
+
+# Résultat:
+# 📦 ghcr.io/z3rox-lab/demo-app:v1.0.0
+# └── 🔐 Signatures
+#     └── sha256:abc123...
+```
+
+### 12.5 Test Kyverno - Image non signée (BLOQUÉE)
+
+```bash
+# Déployer une image non signée (policy en Enforce)
+kubectl run unsigned-app \
+  --image=ghcr.io/z3rox-lab/unsigned-app:v1.0.0 \
+  -n ai-inference
+
+# Résultat attendu:
+# Error: image signature verification failed for ghcr.io/z3rox-lab/unsigned-app:v1.0.0
+```
+
+### 12.6 Test Kyverno - Image signée (ACCEPTÉE)
+
+```bash
+# Déployer une image signée
+kubectl run signed-app \
+  --image=ghcr.io/z3rox-lab/demo-app:v1.0.0 \
+  -n ai-inference
+
+# Résultat: Pod créé ✅
+```
+
+### 12.7 Signature Keyless (OIDC)
+
+```bash
+# Signer avec authentification OIDC (ouvre navigateur)
+COSIGN_EXPERIMENTAL=1 cosign sign ghcr.io/z3rox-lab/demo-app:v2.0.0
+
+# Vérifier avec identité
+cosign verify \
+  --certificate-identity "your-email@example.com" \
+  --certificate-oidc-issuer "https://accounts.google.com" \
+  ghcr.io/z3rox-lab/demo-app:v2.0.0
+```
+
+---
+
 ## Commandes utiles
 
 ### Vérifier l'état de la stack
