@@ -95,9 +95,8 @@ spec:
         - name: QDRANT_API_KEY
           valueFrom:
             secretKeyRef:
-              name: rag-api-qdrant-key
+              name: qdrant-apikey
               key: api-key
-              optional: true
         volumeMounts:
         - name: code
           mountPath: /app/rag_api.py
