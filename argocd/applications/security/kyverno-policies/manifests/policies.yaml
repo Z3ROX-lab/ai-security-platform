@@ -67,7 +67,14 @@ spec:
         - resources:
             namespaces:
               - kube-system
+              - argocd
+              - kyverno
+              - cert-manager
+              - traefik
               - falco
+              - cnpg-system
+              - observability
+              - storage
       validate:
         message: "Privileged containers are not allowed"
         pattern:
