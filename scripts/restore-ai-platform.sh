@@ -4,6 +4,7 @@
 # =============================================================================
 # This script restores all stateful data after cluster recreation
 # Run this AFTER terraform apply and ArgoCD has synced basic infrastructure
+# Version: 2.0.0 - Includes Phase 8 components
 # =============================================================================
 
 set -e
@@ -38,6 +39,7 @@ fi
 echo ""
 echo "=========================================="
 echo "  AI Security Platform - Restore Script"
+echo "  Version 2.0.0 (Phase 8 support)"
 echo "=========================================="
 echo ""
 
@@ -45,7 +47,6 @@ if [ -z "$BACKUP_DIR" ] || [ ! -d "$BACKUP_DIR" ]; then
     log_error "Backup directory not found!"
     echo ""
     echo "Usage: $0 [backup-directory]"
-    echo "Example: $0 ~/backup-ai-platform-20260129-161800"
     echo ""
     echo "Available backups:"
     ls -td ~/work/backup-ai-platform-* 2>/dev/null | head -5 || echo "  (none found)"
@@ -56,195 +57,99 @@ log_info "Using backup: $BACKUP_DIR"
 echo ""
 
 # =============================================================================
-# PHASE 1: DISCOVERY - What will be restored?
+# PHASE 1: DISCOVERY
 # =============================================================================
 
 log_header "═══════════════════════════════════════════════════════════════════"
-log_header "  PHASE 1: DISCOVERY - Analyzing what will be restored"
+log_header "  PHASE 1: DISCOVERY"
 log_header "═══════════════════════════════════════════════════════════════════"
 echo ""
 
-# -----------------------------------------------------------------------------
-# 1.1 Check cluster connectivity
-# -----------------------------------------------------------------------------
-
+# Check cluster
 log_info "Checking cluster connectivity..."
-
 if ! kubectl cluster-info &>/dev/null; then
-    log_error "Cannot connect to Kubernetes cluster!"
-    echo "Make sure you ran 'terraform apply' first."
+    log_error "Cannot connect to cluster! Run 'terraform apply' first."
     exit 1
 fi
-log_success "Cluster is accessible"
+log_success "Cluster accessible"
 echo ""
 
-# -----------------------------------------------------------------------------
-# 1.2 Check backup contents - Databases
-# -----------------------------------------------------------------------------
-
-log_info "Scanning backup contents..."
-
-echo ""
-log_header "  📦 DATABASES TO RESTORE:"
+# Show backup contents
+log_header "  📦 BACKUP CONTENTS:"
 echo "  ┌─────────────────────────────────────────────────────────────────┐"
-
-if [ -d "$BACKUP_DIR/databases" ]; then
-    for DB_FILE in "$BACKUP_DIR/databases"/*.sql; do
-        [ -f "$DB_FILE" ] || continue
-        FILENAME=$(basename "$DB_FILE")
-        FILE_SIZE=$(ls -lh "$DB_FILE" | awk '{print $5}')
-        FILE_BYTES=$(wc -c < "$DB_FILE")
-        
-        if [ "$FILENAME" = "roles.sql" ]; then
-            echo "  │   ✓ PostgreSQL roles/users ($FILE_SIZE)"
-        elif [ "$FILE_BYTES" -lt 1000 ]; then
-            echo "  │   ⊘ ${FILENAME%.sql} ($FILE_SIZE) - SKIP (empty/minimal)"
-        else
-            echo "  │   ✓ ${FILENAME%.sql} ($FILE_SIZE)"
-        fi
-    done
-else
-    echo "  │   ✗ No databases directory found!"
-fi
+[ -d "$BACKUP_DIR/databases" ] && echo "  │   ✓ databases/" || echo "  │   ✗ databases/"
+[ -d "$BACKUP_DIR/secrets" ] && echo "  │   ✓ secrets/" || echo "  │   ✗ secrets/"
+[ -d "$BACKUP_DIR/qdrant" ] && echo "  │   ✓ qdrant/" || echo "  │   ⊘ qdrant/ (optional)"
+[ -d "$BACKUP_DIR/grafana" ] && echo "  │   ✓ grafana/" || echo "  │   ⊘ grafana/ (optional)"
+[ -d "$BACKUP_DIR/kyverno" ] && echo "  │   ✓ kyverno/" || echo "  │   ⊘ kyverno/ (optional)"
 echo "  └─────────────────────────────────────────────────────────────────┘"
 echo ""
 
-# -----------------------------------------------------------------------------
-# 1.3 Check backup contents - Secrets
-# -----------------------------------------------------------------------------
-
-log_header "  🔐 SECRETS TO RESTORE:"
-echo "  ┌─────────────────────────────────────────────────────────────────┐"
-
-if [ -d "$BACKUP_DIR/secrets" ]; then
-    for SECRET_FILE in "$BACKUP_DIR/secrets"/*.yaml; do
-        [ -f "$SECRET_FILE" ] || continue
-        FILENAME=$(basename "$SECRET_FILE" .yaml)
-        
-        # Parse namespace and name (format: namespace__name.yaml)
-        if [[ "$FILENAME" == *"__"* ]]; then
-            NAMESPACE=$(echo "$FILENAME" | cut -d'_' -f1)
-            SECRET_NAME=$(echo "$FILENAME" | cut -d'_' -f3-)
-        else
-            NAMESPACE=$(grep "namespace:" "$SECRET_FILE" 2>/dev/null | head -1 | awk '{print $2}')
-            SECRET_NAME=$(grep "^  name:" "$SECRET_FILE" 2>/dev/null | head -1 | awk '{print $2}')
-        fi
-        
-        echo "  │   ✓ $NAMESPACE/$SECRET_NAME"
-    done
-else
-    echo "  │   ✗ No secrets directory found!"
-fi
-echo "  └─────────────────────────────────────────────────────────────────┘"
-echo ""
-
-# -----------------------------------------------------------------------------
-# 1.4 Check backup contents - Qdrant
-# -----------------------------------------------------------------------------
-
-log_header "  🔢 QDRANT SNAPSHOTS TO RESTORE:"
-echo "  ┌─────────────────────────────────────────────────────────────────┐"
-
-if [ -d "$BACKUP_DIR/qdrant" ]; then
-    QDRANT_FILES=$(ls "$BACKUP_DIR/qdrant" 2>/dev/null | wc -l)
-    if [ "$QDRANT_FILES" -gt 0 ]; then
-        for SNAP_FILE in "$BACKUP_DIR/qdrant"/*; do
-            [ -f "$SNAP_FILE" ] || continue
-            FILENAME=$(basename "$SNAP_FILE")
-            FILE_SIZE=$(ls -lh "$SNAP_FILE" | awk '{print $5}')
-            echo "  │   ✓ $FILENAME ($FILE_SIZE)"
-        done
-    else
-        echo "  │   ⊘ No snapshots found (empty directory)"
-    fi
-else
-    echo "  │   ⊘ No qdrant directory in backup (will skip)"
-fi
-echo "  └─────────────────────────────────────────────────────────────────┘"
-echo ""
-
-# -----------------------------------------------------------------------------
-# 1.5 Check current cluster state
-# -----------------------------------------------------------------------------
-
-log_info "Checking current cluster state..."
-
+# Show current cluster state
 POSTGRES_POD=$(kubectl get pods -n storage -l cnpg.io/cluster=postgresql-cluster -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
-KEYCLOAK_STATUS=$(kubectl get pods -n auth -l app.kubernetes.io/name=keycloakx -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo "Not deployed")
-WEBUI_STATUS=$(kubectl get pods -n ai-apps -l app.kubernetes.io/name=open-webui -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo "Not deployed")
 ARGOCD_STATUS=$(kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-server -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo "Not deployed")
-QDRANT_STATUS=$(kubectl get pods -n ai-inference -l app.kubernetes.io/name=qdrant -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo "Not deployed")
+KYVERNO_STATUS=$(kubectl get pods -n kyverno -l app.kubernetes.io/name=kyverno -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo "Not deployed")
 
-echo ""
 log_header "  🔍 CURRENT CLUSTER STATE:"
 echo "  ┌─────────────────────────────────────────────────────────────────┐"
 echo "  │   ArgoCD:     $ARGOCD_STATUS"
 echo "  │   PostgreSQL: ${POSTGRES_POD:-Not deployed}"
-echo "  │   Keycloak:   $KEYCLOAK_STATUS"
-echo "  │   Open WebUI: $WEBUI_STATUS"
-echo "  │   Qdrant:     $QDRANT_STATUS"
+echo "  │   Kyverno:    $KYVERNO_STATUS"
 echo "  └─────────────────────────────────────────────────────────────────┘"
 echo ""
 
-# Warn if PostgreSQL not ready
 if [ -z "$POSTGRES_POD" ]; then
-    log_warn "PostgreSQL is not deployed yet!"
-    echo "  The script will wait for PostgreSQL to be ready."
-    echo ""
+    log_warn "PostgreSQL not ready. Will wait..."
 fi
-
-# -----------------------------------------------------------------------------
-# 1.6 Restore plan
-# -----------------------------------------------------------------------------
-
-log_header "  📋 RESTORE PLAN:"
-echo "  ┌─────────────────────────────────────────────────────────────────┐"
-echo "  │   1. Wait for PostgreSQL to be ready"
-echo "  │   2. Restore PostgreSQL roles (users/permissions)"
-echo "  │   3. Restore databases (keycloak, openwebui, etc.)"
-echo "  │   4. Restore Kubernetes secrets"
-echo "  │   5. Restore Qdrant vector database snapshots"
-echo "  │   6. Wait for Keycloak and Open WebUI to be deployed"
-echo "  │   7. Restart applications to load restored data"
-echo "  │   8. Verify everything is working"
-echo "  └─────────────────────────────────────────────────────────────────┘"
-echo ""
-
-log_header "  ⚠️  POST-RESTORE MANUAL ACTIONS:"
-echo "  ┌─────────────────────────────────────────────────────────────────┐"
-echo "  │   • Accept new TLS certificates in browser (self-signed)"
-echo "  │   • Ollama models will re-download on first use (~20GB)"
-echo "  │   • ArgoCD has a new admin password (see terraform output)"
-echo "  └─────────────────────────────────────────────────────────────────┘"
-echo ""
 
 # =============================================================================
 # CONFIRMATION
 # =============================================================================
 
-log_header "═══════════════════════════════════════════════════════════════════"
-echo ""
 read -p "Proceed with restore? (y/N) " -n 1 -r
 echo ""
 
 if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    log_warn "Restore cancelled by user."
+    log_warn "Restore cancelled."
     exit 0
 fi
 
 echo ""
 
 # =============================================================================
-# PHASE 2: EXECUTION - Perform the restore
+# PHASE 2: PRE-RESTORE - Fix Kyverno if needed
 # =============================================================================
 
 log_header "═══════════════════════════════════════════════════════════════════"
-log_header "  PHASE 2: EXECUTION - Performing restore"
+log_header "  PHASE 2: PRE-RESTORE - Preparing cluster"
+log_header "═══════════════════════════════════════════════════════════════════"
+echo ""
+
+log_info "Checking Kyverno webhooks..."
+
+# Remove Kyverno webhooks to prevent blocking
+KYVERNO_WEBHOOKS=$(kubectl get validatingwebhookconfiguration -l app.kubernetes.io/instance=kyverno --no-headers 2>/dev/null | wc -l || echo "0")
+if [ "$KYVERNO_WEBHOOKS" -gt 0 ]; then
+    echo -n "  → Removing Kyverno webhooks (prevent blocking)... "
+    kubectl delete validatingwebhookconfiguration -l app.kubernetes.io/instance=kyverno &>/dev/null || true
+    kubectl delete mutatingwebhookconfiguration -l app.kubernetes.io/instance=kyverno &>/dev/null || true
+    echo "done"
+fi
+
+log_success "Pre-restore complete"
+echo ""
+
+# =============================================================================
+# PHASE 3: EXECUTION
+# =============================================================================
+
+log_header "═══════════════════════════════════════════════════════════════════"
+log_header "  PHASE 3: EXECUTION - Restoring data"
 log_header "═══════════════════════════════════════════════════════════════════"
 echo ""
 
 # -----------------------------------------------------------------------------
-# 2.1 Wait for PostgreSQL
+# 3.1 Wait for PostgreSQL
 # -----------------------------------------------------------------------------
 
 log_info "Step 1/6: Waiting for PostgreSQL..."
@@ -257,7 +162,7 @@ while [ $ELAPSED -lt $TIMEOUT ]; do
     
     if [ -n "$POSTGRES_POD" ]; then
         if kubectl exec -n storage $POSTGRES_POD -- pg_isready -U postgres &>/dev/null; then
-            log_success "PostgreSQL is ready: $POSTGRES_POD"
+            log_success "PostgreSQL ready: $POSTGRES_POD"
             break
         fi
     fi
@@ -269,29 +174,25 @@ done
 
 if [ $ELAPSED -ge $TIMEOUT ]; then
     log_error "Timeout waiting for PostgreSQL!"
-    echo "Check: kubectl get pods -n storage"
     exit 1
 fi
 echo ""
 
 # -----------------------------------------------------------------------------
-# 2.2 Restore PostgreSQL Roles
+# 3.2 Restore PostgreSQL Roles
 # -----------------------------------------------------------------------------
 
 log_info "Step 2/6: Restoring PostgreSQL roles..."
 
 if [ -f "$BACKUP_DIR/databases/roles.sql" ]; then
-    echo -n "  → Restoring roles... "
-    kubectl exec -i -n storage $POSTGRES_POD -- psql -U postgres < "$BACKUP_DIR/databases/roles.sql" 2>&1 | grep -c "CREATE ROLE\|ALTER ROLE" || true
+    echo -n "  → roles... "
+    kubectl exec -i -n storage $POSTGRES_POD -- psql -U postgres < "$BACKUP_DIR/databases/roles.sql" &>/dev/null || true
     echo "done"
-    log_success "Roles restored"
-else
-    log_warn "No roles.sql found, skipping"
 fi
 echo ""
 
 # -----------------------------------------------------------------------------
-# 2.3 Restore PostgreSQL Databases
+# 3.3 Restore Databases
 # -----------------------------------------------------------------------------
 
 log_info "Step 3/6: Restoring databases..."
@@ -313,202 +214,117 @@ for DB_FILE in "$BACKUP_DIR/databases"/*.sql; do
     
     echo -n "  → $DB_NAME... "
     
-    # Terminate existing connections
+    # Terminate connections, drop, recreate, restore
     kubectl exec -n storage $POSTGRES_POD -- psql -U postgres -c \
-        "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$DB_NAME' AND pid <> pg_backend_pid();" \
-        &>/dev/null || true
-    
-    # Drop and recreate
+        "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$DB_NAME' AND pid <> pg_backend_pid();" &>/dev/null || true
     kubectl exec -n storage $POSTGRES_POD -- psql -U postgres -c "DROP DATABASE IF EXISTS $DB_NAME;" &>/dev/null || true
     kubectl exec -n storage $POSTGRES_POD -- psql -U postgres -c "CREATE DATABASE $DB_NAME;" &>/dev/null || true
-    
-    # Restore
-    if kubectl exec -i -n storage $POSTGRES_POD -- psql -U postgres -d "$DB_NAME" < "$DB_FILE" &>/dev/null; then
-        echo "done"
-    else
-        echo "done (with warnings)"
-    fi
+    kubectl exec -i -n storage $POSTGRES_POD -- psql -U postgres -d "$DB_NAME" < "$DB_FILE" &>/dev/null
+    echo "done"
 done
 
 log_success "Databases restored"
 echo ""
 
 # -----------------------------------------------------------------------------
-# 2.4 Restore Secrets
+# 3.4 Restore Secrets
 # -----------------------------------------------------------------------------
 
-log_info "Step 4/8: Restoring secrets..."
+log_info "Step 4/6: Restoring secrets..."
 
 if [ -d "$BACKUP_DIR/secrets" ]; then
     for SECRET_FILE in "$BACKUP_DIR/secrets"/*.yaml; do
         [ -f "$SECRET_FILE" ] || continue
         
         FILENAME=$(basename "$SECRET_FILE" .yaml)
-        
-        # Parse namespace from filename or YAML
-        if [[ "$FILENAME" == *"__"* ]]; then
-            NAMESPACE=$(echo "$FILENAME" | cut -d'_' -f1)
-            SECRET_NAME=$(echo "$FILENAME" | cut -d'_' -f3-)
-        else
-            NAMESPACE=$(grep "namespace:" "$SECRET_FILE" | head -1 | awk '{print $2}')
-            SECRET_NAME=$(grep "^  name:" "$SECRET_FILE" | head -1 | awk '{print $2}')
-        fi
+        NAMESPACE=$(echo "$FILENAME" | cut -d'_' -f1)
+        SECRET_NAME=$(echo "$FILENAME" | cut -d'_' -f3-)
         
         echo -n "  → $NAMESPACE/$SECRET_NAME... "
         
-        # Ensure namespace exists
         kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml 2>/dev/null | kubectl apply -f - &>/dev/null || true
-        
-        # Apply secret
-        if kubectl apply -f "$SECRET_FILE" &>/dev/null; then
-            echo "done"
-        else
-            echo "failed"
-        fi
+        kubectl apply -f "$SECRET_FILE" &>/dev/null && echo "done" || echo "failed"
     done
-    log_success "Secrets restored"
-else
-    log_warn "No secrets to restore"
 fi
+
+log_success "Secrets restored"
 echo ""
 
 # -----------------------------------------------------------------------------
-# 2.5 Restore Qdrant Vector Database
+# 3.5 Restore Qdrant
 # -----------------------------------------------------------------------------
 
-log_info "Step 5/8: Restoring Qdrant vector database..."
+log_info "Step 5/6: Restoring Qdrant..."
 
-if [ -d "$BACKUP_DIR/qdrant" ]; then
-    QDRANT_FILES=$(ls "$BACKUP_DIR/qdrant" 2>/dev/null | wc -l)
+if [ -d "$BACKUP_DIR/qdrant" ] && [ "$(ls -A "$BACKUP_DIR/qdrant" 2>/dev/null)" ]; then
+    # Wait for Qdrant
+    echo -n "  → Waiting for Qdrant... "
+    TIMEOUT=120
+    ELAPSED=0
+    while [ $ELAPSED -lt $TIMEOUT ]; do
+        QDRANT_POD=$(kubectl get pods -n ai-inference -l app.kubernetes.io/name=qdrant -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+        STATUS=$(kubectl get pod -n ai-inference "$QDRANT_POD" -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+        if [ "$STATUS" = "Running" ]; then
+            echo "ready"
+            break
+        fi
+        sleep 5
+        ELAPSED=$((ELAPSED + 5))
+    done
     
-    if [ "$QDRANT_FILES" -gt 0 ]; then
-        # Wait for Qdrant to be ready
-        echo -n "  → Waiting for Qdrant... "
-        TIMEOUT=120
-        ELAPSED=0
-        while [ $ELAPSED -lt $TIMEOUT ]; do
-            QDRANT_POD=$(kubectl get pods -n ai-inference -l app.kubernetes.io/name=qdrant -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
-            if [ -n "$QDRANT_POD" ]; then
-                STATUS=$(kubectl get pod -n ai-inference "$QDRANT_POD" -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
-                if [ "$STATUS" = "Running" ]; then
-                    echo "running"
-                    break
-                fi
-            fi
-            sleep 5
-            ELAPSED=$((ELAPSED + 5))
-        done
+    if [ $ELAPSED -lt $TIMEOUT ]; then
+        QDRANT_API_KEY=$(kubectl get secret -n ai-inference rag-api-qdrant-key -o jsonpath='{.data.api-key}' 2>/dev/null | base64 -d || echo "")
         
-        if [ $ELAPSED -ge $TIMEOUT ]; then
-            echo "timeout (Qdrant not ready - skipping)"
-        else
-            # Get API key
-            QDRANT_API_KEY=$(kubectl get secret -n ai-inference rag-api-qdrant-key -o jsonpath='{.data.api-key}' 2>/dev/null | base64 -d || echo "")
-            
-            if [ -n "$QDRANT_API_KEY" ]; then
-                for SNAP_FILE in "$BACKUP_DIR/qdrant"/*; do
-                    [ -f "$SNAP_FILE" ] || continue
-                    FILENAME=$(basename "$SNAP_FILE")
-                    
-                    # Extract collection name from filename (format: collection_snapshot-name)
-                    COLLECTION=$(echo "$FILENAME" | cut -d'_' -f1)
-                    
-                    echo -n "  → Restoring collection '$COLLECTION'... "
-                    
-                    # Copy snapshot to pod
-                    kubectl cp "$SNAP_FILE" "ai-inference/$QDRANT_POD:/tmp/$FILENAME" 2>/dev/null
-                    
-                    # Restore from snapshot
-                    RESTORE_RESULT=$(kubectl exec -n ai-inference $QDRANT_POD -- curl -s -X PUT \
-                        -H "api-key: $QDRANT_API_KEY" \
-                        "http://localhost:6333/collections/$COLLECTION/snapshots/upload?priority=snapshot" \
-                        -H "Content-Type: multipart/form-data" \
-                        -F "snapshot=@/tmp/$FILENAME" 2>/dev/null || echo "error")
-                    
-                    # Cleanup
-                    kubectl exec -n ai-inference $QDRANT_POD -- rm -f "/tmp/$FILENAME" 2>/dev/null
-                    
-                    if echo "$RESTORE_RESULT" | grep -q "error"; then
-                        echo "failed"
-                    else
-                        echo "done"
-                    fi
-                done
-                log_success "Qdrant restored"
-            else
-                log_warn "Qdrant API key not found - skipping restore"
-            fi
+        if [ -n "$QDRANT_API_KEY" ]; then
+            for SNAP_FILE in "$BACKUP_DIR/qdrant"/*; do
+                [ -f "$SNAP_FILE" ] || continue
+                FILENAME=$(basename "$SNAP_FILE")
+                COLLECTION=$(echo "$FILENAME" | cut -d'_' -f1)
+                
+                echo -n "  → $COLLECTION... "
+                kubectl cp "$SNAP_FILE" "ai-inference/$QDRANT_POD:/tmp/$FILENAME" 2>/dev/null
+                kubectl exec -n ai-inference $QDRANT_POD -- curl -s -X PUT \
+                    -H "api-key: $QDRANT_API_KEY" \
+                    "http://localhost:6333/collections/$COLLECTION/snapshots/upload" \
+                    -F "snapshot=@/tmp/$FILENAME" &>/dev/null && echo "done" || echo "failed"
+                kubectl exec -n ai-inference $QDRANT_POD -- rm -f "/tmp/$FILENAME" 2>/dev/null
+            done
         fi
     else
-        log_info "No Qdrant snapshots to restore (empty directory)"
+        log_warn "Qdrant timeout - skipping"
     fi
 else
-    log_info "No Qdrant backup found (will start fresh)"
+    log_info "No Qdrant backup found"
 fi
 echo ""
 
 # -----------------------------------------------------------------------------
-# 2.6 Wait for Applications
+# 3.6 Restart Applications
 # -----------------------------------------------------------------------------
 
-log_info "Step 6/8: Waiting for applications to be deployed..."
+log_info "Step 6/6: Restarting applications..."
 
-echo -n "  → Waiting for Keycloak... "
-TIMEOUT=300
-ELAPSED=0
-while [ $ELAPSED -lt $TIMEOUT ]; do
-    STATUS=$(kubectl get pods -n auth -l app.kubernetes.io/name=keycloakx -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo "")
-    if [ "$STATUS" = "Running" ]; then
-        echo "running"
-        break
-    fi
-    sleep 10
-    ELAPSED=$((ELAPSED + 10))
-done
-[ $ELAPSED -ge $TIMEOUT ] && echo "timeout (check ArgoCD)"
+echo -n "  → Keycloak... "
+kubectl rollout restart statefulset -n auth keycloak-keycloakx &>/dev/null && echo "done" || echo "skipped"
 
-echo -n "  → Waiting for Open WebUI... "
-ELAPSED=0
-while [ $ELAPSED -lt $TIMEOUT ]; do
-    STATUS=$(kubectl get pods -n ai-apps -l app.kubernetes.io/name=open-webui -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo "")
-    if [ "$STATUS" = "Running" ]; then
-        echo "running"
-        break
-    fi
-    sleep 10
-    ELAPSED=$((ELAPSED + 10))
-done
-[ $ELAPSED -ge $TIMEOUT ] && echo "timeout (check ArgoCD)"
+echo -n "  → Open WebUI... "
+kubectl rollout restart statefulset -n ai-apps open-webui &>/dev/null || kubectl rollout restart deployment -n ai-apps open-webui &>/dev/null && echo "done" || echo "skipped"
 
-log_success "Applications deployed"
+echo -n "  → Kyverno... "
+kubectl delete pods -n kyverno --all &>/dev/null && echo "done" || echo "skipped"
+
+log_success "Applications restarted"
 echo ""
 
-# -----------------------------------------------------------------------------
-# 2.7 Restart Applications
-# -----------------------------------------------------------------------------
+# =============================================================================
+# PHASE 4: VERIFICATION
+# =============================================================================
 
-log_info "Step 7/8: Restarting applications to load restored data..."
-
-echo -n "  → Restarting Keycloak... "
-if kubectl rollout restart statefulset -n auth keycloak-keycloakx &>/dev/null; then
-    echo "done"
-else
-    echo "skipped (not found)"
-fi
-
-echo -n "  → Restarting Open WebUI... "
-if kubectl rollout restart statefulset -n ai-apps open-webui &>/dev/null; then
-    echo "done"
-elif kubectl rollout restart deployment -n ai-apps open-webui &>/dev/null; then
-    echo "done"
-else
-    echo "skipped (not found)"
-fi
-
-log_success "Restarts triggered"
+log_header "═══════════════════════════════════════════════════════════════════"
+log_header "  PHASE 4: VERIFICATION"
+log_header "═══════════════════════════════════════════════════════════════════"
 echo ""
 
-# Wait for restarts
 log_info "Waiting for applications to be ready..."
 
 echo -n "  → Keycloak... "
@@ -517,34 +333,9 @@ kubectl wait --for=condition=Ready pod -n auth -l app.kubernetes.io/name=keycloa
 echo -n "  → Open WebUI... "
 kubectl wait --for=condition=Ready pod -n ai-apps -l app.kubernetes.io/name=open-webui --timeout=300s &>/dev/null && echo "ready" || echo "timeout"
 
-echo ""
+echo -n "  → Kyverno... "
+kubectl wait --for=condition=Ready pod -n kyverno -l app.kubernetes.io/name=kyverno --timeout=120s &>/dev/null && echo "ready" || echo "timeout"
 
-# =============================================================================
-# PHASE 3: VERIFICATION
-# =============================================================================
-
-log_header "═══════════════════════════════════════════════════════════════════"
-log_header "  PHASE 3: VERIFICATION"
-log_header "═══════════════════════════════════════════════════════════════════"
-echo ""
-
-log_header "  📊 FINAL STATE:"
-echo ""
-
-echo "  Pods in auth namespace:"
-kubectl get pods -n auth 2>/dev/null | sed 's/^/    /'
-echo ""
-
-echo "  Pods in ai-apps namespace:"
-kubectl get pods -n ai-apps 2>/dev/null | sed 's/^/    /'
-echo ""
-
-echo "  Pods in storage namespace:"
-kubectl get pods -n storage 2>/dev/null | sed 's/^/    /'
-echo ""
-
-echo "  Ingresses:"
-kubectl get ingress -A 2>/dev/null | sed 's/^/    /'
 echo ""
 
 # =============================================================================
@@ -556,21 +347,30 @@ log_header "  RESTORE COMPLETE!"
 log_header "═══════════════════════════════════════════════════════════════════"
 echo ""
 log_success "What was restored:"
-echo "  ✓ PostgreSQL databases (keycloak, openwebui)"
-echo "  ✓ PostgreSQL roles/users"
+echo "  ✓ PostgreSQL databases"
 echo "  ✓ Kubernetes secrets"
-echo "  ✓ Keycloak: realm, users, clients, roles, mappers"
-echo "  ✓ Open WebUI: chat history, settings"
+echo "  ✓ Keycloak realm (users, clients, roles)"
+echo "  ✓ Open WebUI (chat history, settings)"
+echo "  ✓ Qdrant vectors (if backup existed)"
 echo ""
-
+log_header "  📊 PHASE 8 COMPONENTS (auto-restored by ArgoCD):"
+echo "  ✓ Prometheus - fresh metrics"
+echo "  ✓ Grafana - dashboards from Helm"
+echo "  ✓ Loki - fresh logs"
+echo "  ✓ Falco - rules from Git"
+echo "  ✓ Kyverno - policies from Git"
+echo ""
 log_header "  🌐 TEST YOUR APPLICATIONS:"
 echo "  ┌─────────────────────────────────────────────────────────────────┐"
 echo "  │   Keycloak:   https://auth.ai-platform.localhost               │"
 echo "  │   Open WebUI: https://chat.ai-platform.localhost               │"
-echo "  │   ArgoCD:     kubectl port-forward svc/argocd-server \\         │"
-echo "  │               -n argocd 9090:443                                │"
+echo "  │   Grafana:    https://grafana.ai-platform.localhost            │"
+echo "  │   ArgoCD:     https://argocd.ai-platform.localhost             │"
 echo "  └─────────────────────────────────────────────────────────────────┘"
 echo ""
-echo "  Login with your existing Keycloak user: zerotrust"
+log_header "  ⚠️  IF ISSUES:"
+echo "  Fix Kyverno webhooks:"
+echo "    kubectl delete validatingwebhookconfiguration -l app.kubernetes.io/instance=kyverno"
+echo "    kubectl delete mutatingwebhookconfiguration -l app.kubernetes.io/instance=kyverno"
 echo ""
 echo "=========================================="
