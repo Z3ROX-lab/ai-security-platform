@@ -10,9 +10,14 @@ spec:
   template:
     spec:
       restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: false
       containers:
         - name: init-db
           image: postgres:15
+          securityContext:
+            privileged: false
+            allowPrivilegeEscalation: false
           env:
             - name: PGHOST
               value: "postgresql-rw.storage.svc.cluster.local"
@@ -54,9 +59,14 @@ spec:
   template:
     spec:
       restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: false
       containers:
         - name: init-s3
           image: amazon/aws-cli:2.13.0
+          securityContext:
+            privileged: false
+            allowPrivilegeEscalation: false
           env:
             - name: AWS_ACCESS_KEY_ID
               value: "admin"
