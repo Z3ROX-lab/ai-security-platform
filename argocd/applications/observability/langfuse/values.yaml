@@ -1,0 +1,135 @@
+# Langfuse v3 - LLM Observability Platform
+# Helm chart: https://github.com/langfuse/langfuse-k8s
+
+# =============================================================================
+# Langfuse Application
+# =============================================================================
+langfuse:
+  # Salt for hashing (generate with: openssl rand -hex 32)
+  salt:
+    value: "CHANGE_ME_GENERATE_WITH_OPENSSL_RAND_HEX_32"
+  
+  # NextAuth secret (generate with: openssl rand -hex 32)
+  nextauth:
+    secret:
+      value: "CHANGE_ME_GENERATE_WITH_OPENSSL_RAND_HEX_32"
+    url: "https://langfuse.ai-platform.localhost"
+  
+  # Encryption key for sensitive data (generate with: openssl rand -hex 32)
+  encryptionKey:
+    value: "CHANGE_ME_GENERATE_WITH_OPENSSL_RAND_HEX_32"
+
+  # Resources
+  web:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+  worker:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+  # Ingress
+  ingress:
+    enabled: true
+    className: traefik
+    annotations:
+      cert-manager.io/cluster-issuer: "ai-platform-ca-issuer"
+      traefik.ingress.kubernetes.io/router.tls: "true"
+    hosts:
+      - host: langfuse.ai-platform.localhost
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - secretName: langfuse-tls
+        hosts:
+          - langfuse.ai-platform.localhost
+
+# =============================================================================
+# PostgreSQL - Use External (our CNPG)
+# =============================================================================
+postgresql:
+  deploy: false
+  host: "postgresql-rw.storage.svc.cluster.local"
+  port: 5432
+  auth:
+    username: "langfuse"
+    password: "langfuse-password"  # TODO: Use sealed secret
+    database: "langfuse"
+
+# =============================================================================
+# S3 - Use External (our SeaweedFS)
+# =============================================================================
+s3:
+  deploy: false
+  bucket: "langfuse"
+  endpoint: "http://seaweedfs-s3.storage.svc.cluster.local:8333"
+  region: "us-east-1"
+  forcePathStyle: true
+  auth:
+    accessKeyId: "admin"
+    secretAccessKey: "admin123"  # TODO: Use sealed secret
+
+# =============================================================================
+# ClickHouse - Deploy via chart
+# =============================================================================
+clickhouse:
+  deploy: true
+  auth:
+    username: "default"
+    password: "clickhouse-password"  # TODO: Use sealed secret
+  
+  shards: 1
+  replicaCount: 1
+  
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClass: local-path
+  
+  resources:
+    requests:
+      cpu: 200m
+      memory: 1Gi
+    limits:
+      cpu: 1
+      memory: 2Gi
+  
+  # Disable Zookeeper for single-node setup
+  zookeeper:
+    enabled: false
+
+# =============================================================================
+# Redis - Deploy via chart
+# =============================================================================
+redis:
+  deploy: true
+  auth:
+    password: "redis-password"  # TODO: Use sealed secret
+  
+  architecture: standalone
+  
+  master:
+    persistence:
+      enabled: true
+      size: 1Gi
+      storageClass: local-path
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
