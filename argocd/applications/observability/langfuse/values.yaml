@@ -4,20 +4,25 @@
 # =============================================================================
 # Langfuse Application
 # =============================================================================
+#Générer les secrets
+#echo "SALT: $(openssl rand -hex 32)"
+#echo "NEXTAUTH: $(openssl rand -hex 32)"
+#echo "ENCRYPTION: $(openssl rand -hex 32)"
+
 langfuse:
   # Salt for hashing (generate with: openssl rand -hex 32)
   salt:
-    value: "CHANGE_ME_GENERATE_WITH_OPENSSL_RAND_HEX_32"
+    value: "8c01be952efbb6a867511e7606c7b465ee56e8254e9ad06fb36f7fe841d1919b"
   
   # NextAuth secret (generate with: openssl rand -hex 32)
   nextauth:
     secret:
-      value: "CHANGE_ME_GENERATE_WITH_OPENSSL_RAND_HEX_32"
+      value: "15292fcd30d96be766fad3b098d4d1570ff074b6c0a4209053142097994616af"
     url: "https://langfuse.ai-platform.localhost"
   
   # Encryption key for sensitive data (generate with: openssl rand -hex 32)
   encryptionKey:
-    value: "CHANGE_ME_GENERATE_WITH_OPENSSL_RAND_HEX_32"
+    value: "191d9dcb671024a4f928300c4c8d3fa341d3a6794b8d41a8a6e9e07083ba3200"
 
   # Resources
   web:
