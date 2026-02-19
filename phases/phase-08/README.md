@@ -13,6 +13,7 @@ Phase 8 implements comprehensive observability and runtime security for the AI S
 | **Promtail** | Log collection (DaemonSet) | ✅ |
 | **Falco** | Runtime security monitoring | ✅ |
 | **Kyverno** | Policy enforcement | ✅ |
+| **Langfuse** | LLM Observability | ⏸️ Deferred |
 
 ## Architecture
 
@@ -105,6 +106,28 @@ curl -sk https://alertmanager.ai-platform.localhost/-/healthy
 | `add-network-policy-labels` | Mutate | - | Auto-label for NetworkPolicies |
 | `require-probes` | Audit | - | Require health probes |
 
+### Namespace Exclusions
+
+System namespaces are excluded from restrictive policies to ensure cluster stability:
+
+```yaml
+exclude:
+  any:
+  - resources:
+      namespaces:
+        - kube-system
+        - argocd
+        - kyverno
+        - cert-manager
+        - traefik
+        - falco
+        - cnpg-system
+        - observability
+        - storage
+```
+
+**Rationale**: System components need privileges to function. Application workloads (ai-apps, ai-inference, auth) remain protected. See [ADR-018: Kyverno Policy Strategy](../../docs/adr/ADR-018-kyverno-policy-strategy.md).
+
 ### Test Kyverno - Privileged Container (BLOCKED)
 
 ```bash
@@ -153,6 +176,54 @@ kubectl logs -n falco -l app.kubernetes.io/name=falco -c falco --tail=50
 
 > **Note:** Falco syscall detection may be limited in WSL2/K3d environments due to eBPF restrictions. Full functionality available on bare-metal or cloud Kubernetes.
 
+## Langfuse LLM Observability (Deferred)
+
+Langfuse was planned for LLM-specific observability but is deferred due to RAM constraints.
+
+### What Langfuse Would Add
+
+| Feature | Benefit |
+|---------|---------|
+| LLM Traces | Track prompts, completions, tokens |
+| Cost Tracking | Monitor API spend |
+| Prompt Management | Version control for prompts |
+| Evaluations | Score LLM outputs |
+
+### Architecture (Prepared)
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                    LANGFUSE v3                           │
+├──────────────────────────────────────────────────────────┤
+│                                                          │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐   │
+│  │PostgreSQL│ │SeaweedFS │ │ClickHouse│ │  Redis   │   │
+│  │(existing)│ │(existing)│ │  (new)   │ │  (new)   │   │
+│  │  ~0Gi    │ │  ~0Gi    │ │ ~1.5Gi   │ │ ~256Mi   │   │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────┘   │
+│                                                          │
+│  Total new RAM required: ~3.5Gi                         │
+│  Current available: ~500Mi                               │
+│  Status: DEFERRED                                        │
+│                                                          │
+└──────────────────────────────────────────────────────────┘
+```
+
+See [Langfuse Architecture](../../docs/langfuse-architecture.md) for deployment details when resources allow.
+
+## Container Registry Strategy
+
+Currently using K3d built-in registry. Harbor considered for future:
+
+| Feature | K3d Registry | Harbor |
+|---------|--------------|--------|
+| RAM Usage | ~50Mi | ~2-4Gi |
+| Vuln Scanning | ❌ | ✅ Trivy |
+| Web UI | ❌ | ✅ |
+| Image Signing | Via Cosign | Built-in |
+
+See [ADR-017: Container Registry Strategy](../../docs/adr/ADR-017-container-registry-strategy.md).
+
 ## OWASP LLM Coverage
 
 | OWASP | Threat | Mitigation |
@@ -196,6 +267,47 @@ kyverno_policy_results_total{rule_result="fail"}
 {namespace="falco"} | json
 ```
 
+## Troubleshooting
+
+### Kyverno Webhook Deadlock
+
+If Kyverno crashes and blocks all pod creation:
+
+```bash
+# Remove webhooks
+kubectl delete validatingwebhookconfiguration -l app.kubernetes.io/instance=kyverno
+kubectl delete mutatingwebhookconfiguration -l app.kubernetes.io/instance=kyverno
+
+# Restart blocked deployments
+kubectl rollout restart deployment <name> -n <namespace>
+
+# Restart Kyverno
+kubectl delete pods -n kyverno --all
+```
+
+### Falco UI Not Starting
+
+Falcosidekick-UI may crash in WSL2/K3d. Disable if problematic:
+
+```bash
+kubectl scale deployment -n falco falco-falcosidekick-ui --replicas=0
+```
+
+Falco alerts remain visible in Grafana + Loki.
+
+### ArgoCD Server Missing
+
+```bash
+# Check if Kyverno is blocking
+kubectl get events -n argocd --sort-by='.lastTimestamp' | grep -i policy
+
+# Force creation
+kubectl delete rs -n argocd -l app.kubernetes.io/name=argocd-server
+kubectl get pods -n argocd -w
+```
+
+See [Troubleshooting Guide](../../docs/troubleshooting-guide.md) for complete solutions.
+
 ## Resource Usage
 
 | Component | RAM Request | RAM Limit |
@@ -213,9 +325,19 @@ kyverno_policy_results_total{rule_result="fail"}
 
 | Document | Description |
 |----------|-------------|
-| [Configuration Guide](phase-08-configuration-guide.md) | Prometheus, Grafana, Loki, Falco, Kyverno config |
-| [Demo Guide](phase-08-demo-guide.md) | 12 démos avec tests complets |
+| [Configuration Guide](configuration-guide.md) | Prometheus, Grafana, Loki, Falco, Kyverno config |
+| [Demo Guide](demo-guide.md) | 12 démos avec tests complets |
 | [Cosign + Kyverno Guide](cosign-kyverno-guide.md) | Image signature verification |
+| [Troubleshooting Guide](../../docs/troubleshooting-guide.md) | Common issues and solutions |
+| [Langfuse Architecture](../../docs/langfuse-architecture.md) | LLM observability (deferred) |
+
+## ADR References
+
+| ADR | Title |
+|-----|-------|
+| [ADR-016](../../docs/adr/ADR-016-observability-security-monitoring-strategy.md) | Observability and Security Monitoring Strategy |
+| [ADR-017](../../docs/adr/ADR-017-container-registry-strategy.md) | Container Registry Strategy |
+| [ADR-018](../../docs/adr/ADR-018-kyverno-policy-strategy.md) | Kyverno Policy Strategy |
 
 ## Files
 
@@ -231,20 +353,23 @@ ai-security-platform/
 │       └── security/
 │           ├── kyverno/
 │           └── kyverno-policies/
+├── docs/
+│   ├── adr/
+│   │   ├── ADR-016-observability-security-monitoring-strategy.md
+│   │   ├── ADR-017-container-registry-strategy.md
+│   │   └── ADR-018-kyverno-policy-strategy.md
+│   ├── langfuse-architecture.md
+│   └── troubleshooting-guide.md
 └── phases/
     └── phase-08/
         ├── README.md
-        ├── phase-08-configuration-guide.md
-        ├── phase-08-demo-guide.md
+        ├── configuration-guide.md
+        ├── demo-guide.md
         └── cosign-kyverno-guide.md
 ```
 
-## ADR Reference
-
-See [ADR-016: Observability and Security Monitoring Strategy](../../docs/adr/ADR-016-observability-security-monitoring-strategy.md)
-
 ---
 
-**Date:** 2026-02-03
+**Date:** 2026-02-19
 **Author:** Z3ROX - AI Security Platform
-**Version:** 2.0.0
+**Version:** 2.1.0
