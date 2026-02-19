@@ -1,0 +1,148 @@
+# Trivy Operator Values for AI Security Platform
+# https://github.com/aquasecurity/trivy-operator
+
+# =============================================================================
+# Operator Configuration
+# =============================================================================
+
+operator:
+  # Number of concurrent scan jobs
+  scanJobsConcurrentLimit: 3
+  
+  # Scan job timeout
+  scanJobTimeout: 5m
+  
+  # Vulnerability scanner (trivy)
+  vulnerabilityScannerEnabled: true
+  
+  # Config audit scanner
+  configAuditScannerEnabled: true
+  
+  # RBAC assessment
+  rbacAssessmentScannerEnabled: true
+  
+  # Infra assessment
+  infraAssessmentScannerEnabled: false
+  
+  # Exposed secrets scanner
+  exposedSecretScannerEnabled: true
+
+# =============================================================================
+# Trivy Scanner Configuration
+# =============================================================================
+
+trivy:
+  # Ignore unfixed vulnerabilities (cleaner reports)
+  ignoreUnfixed: true
+  
+  # Severity levels to report
+  severity: CRITICAL,HIGH,MEDIUM
+  
+  # Use slow mode for resource-constrained environments
+  slow: true
+  
+  # Skip directories
+  skipDirs: /proc,/sys,/dev
+  
+  # Offline mode (use bundled DB)
+  offlineScan: false
+  
+  # Timeout for each scan
+  timeout: 5m0s
+  
+  # Resource limits for scan jobs
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  
+  # Image reference
+  image:
+    registry: ghcr.io
+    repository: aquasecurity/trivy
+    tag: "0.53.0"
+    pullPolicy: IfNotPresent
+
+# =============================================================================
+# Namespace Targeting
+# =============================================================================
+
+# Only scan AI workload namespaces
+targetNamespaces: "ai-inference,ai-apps,auth"
+
+# Exclude system namespaces
+excludeNamespaces: "kube-system,argocd,kyverno,cert-manager,traefik,observability,falco,cnpg-system,storage,trivy-system"
+
+# =============================================================================
+# Service Account
+# =============================================================================
+
+serviceAccount:
+  create: true
+  name: trivy-operator
+  annotations: {}
+
+# =============================================================================
+# RBAC
+# =============================================================================
+
+rbac:
+  create: true
+
+# =============================================================================
+# Prometheus Integration
+# =============================================================================
+
+serviceMonitor:
+  enabled: true
+  namespace: trivy-system
+  labels:
+    release: kube-prometheus-stack
+  interval: 60s
+
+# =============================================================================
+# Compliance (Optional)
+# =============================================================================
+
+compliance:
+  # Enable compliance reports (NSA, CIS)
+  enabled: false
+
+# =============================================================================
+# Node Collector (Optional)
+# =============================================================================
+
+nodeCollector:
+  # Scan node filesystem for vulnerabilities
+  enabled: false
+
+# =============================================================================
+# Resources
+# =============================================================================
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# =============================================================================
+# Pod Security
+# =============================================================================
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10000
+  fsGroup: 10000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL

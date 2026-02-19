@@ -1,0 +1,78 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: trivy-operator
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://aquasecurity.github.io/helm-charts/
+    targetRevision: 0.24.1
+    chart: trivy-operator
+    helm:
+      valueFiles:
+        - values.yaml
+      values: |
+        # Trivy Operator Configuration for AI Security Platform
+        
+        # Operator settings
+        operator:
+          # Scan only specific namespaces (reduce noise)
+          scanJobsConcurrentLimit: 3
+          
+        # Trivy scanner settings  
+        trivy:
+          # Ignore unfixed vulnerabilities
+          ignoreUnfixed: true
+          
+          # Severity levels to report
+          severity: CRITICAL,HIGH,MEDIUM
+          
+          # Slow mode for resource-constrained environments
+          slow: true
+          
+          # Resource limits for scan jobs
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+        
+        # Target namespaces to scan (empty = all)
+        targetNamespaces: "ai-inference,ai-apps,auth"
+        
+        # Exclude system namespaces
+        excludeNamespaces: "kube-system,argocd,kyverno,cert-manager,traefik,observability,falco,cnpg-system,storage"
+        
+        # Service account
+        serviceAccount:
+          create: true
+          name: trivy-operator
+        
+        # Compliance reports (optional)
+        compliance:
+          # Generate compliance reports
+          enabled: false
+        
+        # Exposed metrics for Prometheus
+        serviceMonitor:
+          enabled: true
+          namespace: trivy-system
+          labels:
+            release: kube-prometheus-stack
+  
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: trivy-system
+  
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
