@@ -1,9 +1,12 @@
 ollamaUrls:
   - "http://ollama.ai-inference.svc:11434"
+
 ollama:
   enabled: false
+
 postgresql:
   enabled: false
+
 ingress:
   enabled: true
   class: traefik
@@ -11,10 +14,12 @@ ingress:
     cert-manager.io/cluster-issuer: ai-platform-ca-issuer
   host: chat.ai-platform.localhost
   tls: true
+
 persistence:
   enabled: true
   size: 5Gi
   storageClass: local-path
+
 resources:
   requests:
     memory: "512Mi"
@@ -22,6 +27,7 @@ resources:
   limits:
     memory: "2Gi"
     cpu: "1000m"
+
 extraEnvVars:
   - name: WEBUI_NAME
     value: "AI Security Platform"
@@ -89,8 +95,3 @@ pipelines:
     enabled: true
     size: 1Gi
     storageClass: local-path
-  
-  # Extra environment variables for pipeline configuration
-  extraEnvVars:
-    - name: PIPELINES_URLS
-      value: "http://guardrails-api.ai-inference.svc.cluster.local:8000"
