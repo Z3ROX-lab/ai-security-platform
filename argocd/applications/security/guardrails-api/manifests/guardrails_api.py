@@ -67,7 +67,7 @@ def get_input_scanners():
         
         if config.enable_prompt_injection:
             logger.info("  Loading PromptInjection scanner...")
-            scanners.append(PromptInjection(threshold=config.prompt_injection_threshold))
+            scanners.append(PromptInjection(threshold=config.prompt_injection_threshold, match_type="sentence"))
         
         if config.enable_toxicity:
             logger.info("  Loading Toxicity scanner...")
