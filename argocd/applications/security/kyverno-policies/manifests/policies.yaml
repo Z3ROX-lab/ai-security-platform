@@ -17,7 +17,7 @@ metadata:
       Requires all containers to have resource limits defined.
       Prevents DoS attacks (OWASP LLM04).
 spec:
-  validationFailureAction: Audit  # Change to Enforce in production
+  validationFailureAction: Audit
   background: true
   rules:
     - name: check-resource-limits
@@ -42,6 +42,7 @@ spec:
 # =============================================================================
 # Policy 2: Disallow Privileged Containers
 # Prevents container escape
+# FIXED: Only blocks if privileged: true is explicitly set
 # =============================================================================
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
@@ -52,6 +53,9 @@ metadata:
     policies.kyverno.io/category: Pod Security
     policies.kyverno.io/severity: high
     policies.kyverno.io/subject: Pod
+    policies.kyverno.io/description: >-
+      Blocks pods that explicitly set privileged: true.
+      Allows pods without securityContext (default is non-privileged).
 spec:
   validationFailureAction: Enforce
   background: true
@@ -75,13 +79,18 @@ spec:
               - cnpg-system
               - observability
               - storage
+              - trivy-system
       validate:
-        message: "Privileged containers are not allowed"
-        pattern:
-          spec:
-            containers:
-              - securityContext:
-                  privileged: "!true"
+        message: "Privileged containers are not allowed. Remove privileged: true from securityContext."
+        deny:
+          conditions:
+            any:
+            - key: "{{ request.object.spec.containers[?securityContext.privileged == `true`] | length(@) }}"
+              operator: GreaterThan
+              value: 0
+            - key: "{{ request.object.spec.initContainers[?securityContext.privileged == `true`] | length(@) }}"
+              operator: GreaterThan
+              value: 0
 ---
 # =============================================================================
 # Policy 3: Require Non-Root User
@@ -97,7 +106,7 @@ metadata:
     policies.kyverno.io/severity: medium
     policies.kyverno.io/subject: Pod
 spec:
-  validationFailureAction: Audit  # Many images still run as root
+  validationFailureAction: Audit
   background: true
   rules:
     - name: check-non-root
