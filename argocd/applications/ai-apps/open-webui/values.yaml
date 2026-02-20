@@ -51,6 +51,15 @@ extraEnvVars:
     value: "mistral:7b-instruct-v0.3-q4_K_M"
   - name: DATABASE_URL
     value: "postgresql://openwebui:openwebui123@postgresql-cluster-rw.storage.svc:5432/openwebui"
+  # Secret key for sessions (from SealedSecret - required for runAsNonRoot)
+  - name: WEBUI_SECRET_KEY
+    valueFrom:
+      secretKeyRef:
+        name: openwebui-secret-key
+        key: secret-key
+  # Placeholder for OpenAI API (not used but required by chart when pipelines enabled)
+  - name: OPENAI_API_KEY
+    value: "sk-placeholder-not-used"
   # OIDC Configuration
   - name: ENABLE_OAUTH_SIGNUP
     value: "true"
