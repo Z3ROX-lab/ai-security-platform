@@ -89,15 +89,15 @@ def get_output_scanners():
     
     if _output_scanners is None:
         logger.info("Loading output scanners...")
-        from llm_guard.output_scanners import Sensitive, NoRefusal
+        # Output scanners loaded conditionally
         
         scanners = []
         
         if config.enable_pii:
+            from llm_guard.output_scanners import Sensitive
             logger.info("  Loading Sensitive (PII) scanner...")
             scanners.append(Sensitive(redact=True))
         
-        scanners.append(NoRefusal())
         
         _output_scanners = scanners
         logger.info(f"Loaded {len(scanners)} output scanners")
@@ -318,10 +318,6 @@ def list_scanners():
                 "enabled": config.enable_pii,
                 "description": "Detects and redacts PII (names, emails, SSN, etc.)"
             },
-            "NoRefusal": {
-                "enabled": True,
-                "description": "Detects if LLM refused to answer"
-            }
         }
     }
 
