@@ -20,6 +20,20 @@ persistence:
   size: 5Gi
   storageClass: local-path
 
+# =============================================================================
+# Open WebUI Container Security (Kyverno-compliant)
+# =============================================================================
+containerSecurityContext:
+  runAsUser: 1000
+  runAsGroup: 1000
+  runAsNonRoot: true
+  privileged: false
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  capabilities:
+    drop:
+      - ALL
+
 resources:
   requests:
     memory: "512Mi"
@@ -78,8 +92,6 @@ pipelines:
     capabilities:
       drop:
         - ALL
-    seccompProfile:
-      type: "RuntimeDefault"
   
   # Resource limits (Kyverno: require-resource-limits / OWASP LLM04)
   resources:
