@@ -1,12 +1,9 @@
 ollamaUrls:
   - "http://ollama.ai-inference.svc:11434"
-
 ollama:
   enabled: false
-
 postgresql:
   enabled: false
-
 ingress:
   enabled: true
   class: traefik
@@ -14,12 +11,10 @@ ingress:
     cert-manager.io/cluster-issuer: ai-platform-ca-issuer
   host: chat.ai-platform.localhost
   tls: true
-
 persistence:
   enabled: true
   size: 5Gi
   storageClass: local-path
-
 resources:
   requests:
     memory: "512Mi"
@@ -27,7 +22,6 @@ resources:
   limits:
     memory: "2Gi"
     cpu: "1000m"
-
 extraEnvVars:
   - name: WEBUI_NAME
     value: "AI Security Platform"
@@ -59,3 +53,44 @@ extraEnvVars:
     value: "openid email profile"
   - name: OPENID_REDIRECT_URI
     value: "https://chat.ai-platform.localhost/oauth/oidc/callback"
+
+# =============================================================================
+# Pipelines Configuration (LLM Guard + RAG)
+# Kyverno-compliant security settings
+# =============================================================================
+pipelines:
+  enabled: true
+  
+  # Container security context (Kyverno: disallow-privileged, require-non-root)
+  containerSecurityContext:
+    runAsUser: 1000
+    runAsGroup: 1000
+    runAsNonRoot: true
+    privileged: false
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false
+    capabilities:
+      drop:
+        - ALL
+    seccompProfile:
+      type: "RuntimeDefault"
+  
+  # Resource limits (Kyverno: require-resource-limits / OWASP LLM04)
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+  
+  # Persistence for pipelines
+  persistence:
+    enabled: true
+    size: 1Gi
+    storageClass: local-path
+  
+  # Extra environment variables for pipeline configuration
+  extraEnvVars:
+    - name: PIPELINES_URLS
+      value: "http://guardrails-api.ai-inference.svc.cluster.local:8000"
