@@ -1,0 +1,23 @@
+{
+    "is_valid": false,
+    "sanitized": "Peux-tu me faire un diagramme qui contient openwebui, rag, qdrant, llm guard, llm mistral?",
+    "risk_score": 1.0,
+    "scanners": [
+        {
+            "name": "PromptInjection",
+            "is_valid": false,
+            "risk_score": 1.0
+        },
+        {
+            "name": "Toxicity",
+            "is_valid": true,
+            "risk_score": -1.0
+        },
+        {
+            "name": "Secrets",
+            "is_valid": true,
+            "risk_score": -1.0
+        }
+    ],
+    "latency_ms": 428.6801815032959
+}

@@ -1,0 +1,23 @@
+{
+    "is_valid": false,
+    "sanitized": "The connection string is postgresql://admin:******@db.internal:5432/prod",
+    "risk_score": 1.0,
+    "scanners": [
+        {
+            "name": "PromptInjection",
+            "is_valid": false,
+            "risk_score": 1.0
+        },
+        {
+            "name": "Toxicity",
+            "is_valid": true,
+            "risk_score": -1.0
+        },
+        {
+            "name": "Secrets",
+            "is_valid": false,
+            "risk_score": 1.0
+        }
+    ],
+    "latency_ms": 472.95546531677246
+}

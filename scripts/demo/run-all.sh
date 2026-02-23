@@ -1,8 +1,7 @@
 #!/bin/bash
 ###############################################################################
 # AI Security Platform - Demo Runner
-# Author: Z3ROX
-# Description: Orchestrates all 6 demo scenarios sequentially
+# Orchestrates all 6 demo scenarios sequentially
 ###############################################################################
 
 set -euo pipefail
@@ -13,25 +12,24 @@ RESULTS_DIR="$REPO_DIR/docs/demo/results"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 RUN_DIR="$RESULTS_DIR/$TIMESTAMP"
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-PURPLE='\033[0;35m'
-CYAN='\033[0;36m'
-NC='\033[0m'
-BOLD='\033[1m'
+source "$SCRIPT_DIR/demo-common.sh"
 
 banner() {
     echo ""
     echo -e "${BOLD}${BLUE}╔══════════════════════════════════════════════════════════════╗${NC}"
     echo -e "${BOLD}${BLUE}║          🎯 AI SECURITY PLATFORM — DEMO RUNNER              ║${NC}"
-    echo -e "${BOLD}${BLUE}║          Testing all 6 security scenarios                    ║${NC}"
     echo -e "${BOLD}${BLUE}╚══════════════════════════════════════════════════════════════╝${NC}"
     echo ""
-    echo -e "  ${CYAN}Timestamp:${NC} $TIMESTAMP"
-    echo -e "  ${CYAN}Results:${NC}   $RUN_DIR"
+    echo -e "  ${CYAN}Timestamp:${NC}  $TIMESTAMP"
+    echo -e "  ${CYAN}Results:${NC}    $RUN_DIR"
+    echo ""
+    echo -e "  ${CYAN}URLs:${NC}"
+    echo -e "    Open WebUI:   $OPENWEBUI_URL"
+    echo -e "    Guardrails:   $GUARDRAILS_URL"
+    echo -e "    Grafana:      $GRAFANA_URL"
+    echo -e "    Prometheus:   $PROMETHEUS_URL"
+    echo -e "    Keycloak:     $KEYCLOAK_URL"
+    echo -e "    Qdrant:       $QDRANT_URL"
     echo ""
 }
 
@@ -41,28 +39,11 @@ separator() {
     echo ""
 }
 
-screenshot_prompt() {
-    local msg="$1"
-    local url="${2:-}"
-    echo ""
-    echo -e "  ${YELLOW}📸 SCREENSHOT:${NC} $msg"
-    [[ -n "$url" ]] && echo -e "  ${YELLOW}   URL:${NC} $url"
-    echo ""
-    read -p "  Press ENTER when screenshot is taken (or 's' to skip)... " -n 1 -r choice
-    echo ""
-    if [[ "$choice" == "s" || "$choice" == "S" ]]; then
-        echo -e "  ${YELLOW}⏭️  Skipped${NC}"
-    else
-        echo -e "  ${GREEN}✅ Captured${NC}"
-    fi
-}
-
 check_prerequisites() {
     echo -e "${CYAN}🔍 Checking prerequisites...${NC}"
-    
     local ok=true
-    
-    for cmd in kubectl curl jq; do
+
+    for cmd in kubectl curl jq python3; do
         if command -v $cmd &>/dev/null; then
             echo -e "  ${GREEN}✓${NC} $cmd"
         else
@@ -71,39 +52,31 @@ check_prerequisites() {
         fi
     done
 
-    # Check cluster
+    # Cluster
     if kubectl cluster-info &>/dev/null; then
-        echo -e "  ${GREEN}✓${NC} K3d cluster reachable"
+        echo -e "  ${GREEN}✓${NC} K3d cluster"
     else
-        echo -e "  ${RED}✗${NC} Cluster not reachable"
+        echo -e "  ${RED}✗${NC} Cluster unreachable"
         ok=false
     fi
 
-    # Check key pods
-    for ns_pod in "ai-apps/open-webui" "ai-inference/ollama" "ai-inference/guardrails-api" "falco/falco" "observability/prometheus"; do
-        ns="${ns_pod%%/*}"
-        name="${ns_pod##*/}"
-        count=$(kubectl get pods -n "$ns" 2>/dev/null | grep -c "$name.*Running" || true)
-        if [[ $count -gt 0 ]]; then
-            echo -e "  ${GREEN}✓${NC} $name ($ns)"
+    # Traefik URLs
+    for url_name in GUARDRAILS_URL OPENWEBUI_URL GRAFANA_URL PROMETHEUS_URL KEYCLOAK_URL; do
+        url="${!url_name}"
+        HTTP_CODE=$($CURL -o /dev/null -w "%{http_code}" "$url" 2>/dev/null)
+        if [[ "$HTTP_CODE" =~ ^[23] ]]; then
+            echo -e "  ${GREEN}✓${NC} $url_name ($HTTP_CODE)"
         else
-            echo -e "  ${RED}✗${NC} $name ($ns) — not running"
+            echo -e "  ${RED}✗${NC} $url_name ($HTTP_CODE)"
             ok=false
         fi
     done
 
     if [[ "$ok" == false ]]; then
-        echo -e "\n${RED}❌ Prerequisites not met. Fix issues above and retry.${NC}"
+        echo -e "\n${RED}❌ Prerequisites not met. Fix and retry.${NC}"
         exit 1
     fi
-
     echo -e "\n${GREEN}✅ All prerequisites OK${NC}"
-}
-
-# Create results directory
-setup_results() {
-    mkdir -p "$RUN_DIR"
-    echo -e "${CYAN}📁 Results directory: $RUN_DIR${NC}"
 }
 
 run_scenario() {
@@ -118,7 +91,7 @@ run_scenario() {
     if [[ -x "$script" ]]; then
         "$script" "$RUN_DIR"
     else
-        echo -e "  ${RED}Script not found or not executable: $script${NC}"
+        echo -e "  ${RED}Script not found: $script${NC}"
         return 1
     fi
 }
@@ -129,17 +102,16 @@ summary() {
     echo -e "${BOLD}${GREEN}║                    ✅ DEMO COMPLETE                          ║${NC}"
     echo -e "${BOLD}${GREEN}╚══════════════════════════════════════════════════════════════╝${NC}"
     echo ""
-    echo -e "  ${CYAN}Results saved to:${NC} $RUN_DIR"
+    echo -e "  ${CYAN}Results:${NC} $RUN_DIR"
     echo ""
-    echo -e "  ${CYAN}Files generated:${NC}"
     find "$RUN_DIR" -type f | sort | while read -r f; do
         echo -e "    📄 ${f#$RUN_DIR/}"
     done
     echo ""
     echo -e "  ${CYAN}Next steps:${NC}"
-    echo -e "    1. Add screenshots to docs/demo/screenshots/"
-    echo -e "    2. git add docs/demo/ && git commit -m 'docs: demo results'"
-    echo -e "    3. git push"
+    echo "    1. Add screenshots to docs/demo/screenshots/"
+    echo "    2. git add docs/demo/ && git commit -m 'docs: demo results $(date +%Y-%m-%d)'"
+    echo "    3. git push"
     echo ""
 }
 
@@ -149,7 +121,8 @@ summary() {
 
 banner
 check_prerequisites
-setup_results
+
+mkdir -p "$RUN_DIR"
 
 run_scenario "01" "chat"       "$BLUE"
 run_scenario "02" "rag"        "$GREEN"
