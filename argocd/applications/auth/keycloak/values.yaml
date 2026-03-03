@@ -4,11 +4,14 @@
 replicas: 1
 
 # Args for production mode
+# --hostname=https://... ensures Keycloak generates HTTPS redirect URIs
+# Required for Entra ID federation (Azure rejects http:// redirect URIs)
 args:
   - "start"
   - "--http-enabled=true"
   - "--hostname-strict=false"
   - "--proxy-headers=xforwarded"
+  - "--hostname=https://auth.ai-platform.localhost"
 
 # Disable chart's proxy config (uses deprecated option)
 proxy:
@@ -67,5 +70,3 @@ extraEnv: |
     value: admin123
   - name: KC_HOSTNAME
     value: auth.ai-platform.localhost
-    name: KC_HOSTNAME_URL
-    value: https://auth.ai-platform.localhost
