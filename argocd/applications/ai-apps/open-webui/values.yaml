@@ -15,9 +15,6 @@ persistence:
   enabled: true
   size: 5Gi
   storageClass: local-path
-# =============================================================================
-# Open WebUI Container Security (Kyverno-compliant)
-# =============================================================================
 containerSecurityContext:
   runAsUser: 1000
   runAsGroup: 1000
@@ -35,26 +32,13 @@ resources:
   limits:
     memory: "2Gi"
     cpu: "1000m"
-# =============================================================================
 # Host Aliases - Route auth.ai-platform.localhost to Traefik ClusterIP
 # Required for OIDC token exchange with Keycloak HTTPS endpoints
-# NOTE: Update IP if Traefik service ClusterIP changes (kubectl get svc -n traefik traefik)
-# =============================================================================
+# NOTE: Update IP if Traefik ClusterIP changes (kubectl get svc -n traefik traefik)
 hostAliases:
   - ip: "10.43.251.141"
     hostnames:
       - "auth.ai-platform.localhost"
-# =============================================================================
-# Extra Volumes - CA cert bundle for Keycloak HTTPS trust
-# =============================================================================
-extraVolumes:
-  - name: keycloak-ca
-    configMap:
-      name: keycloak-ca-cert
-extraVolumeMounts:
-  - name: keycloak-ca
-    mountPath: /etc/ssl/keycloak
-    readOnly: true
 extraEnvVars:
   - name: WEBUI_NAME
     value: "AI Security Platform"
@@ -64,16 +48,15 @@ extraEnvVars:
     value: "mistral:7b-instruct-v0.3-q4_K_M"
   - name: DATABASE_URL
     value: "postgresql://openwebui:openwebui123@postgresql-cluster-rw.storage.svc:5432/openwebui"
-  # Secret key for sessions (from SealedSecret - required for runAsNonRoot)
   - name: WEBUI_SECRET_KEY
     valueFrom:
       secretKeyRef:
         name: openwebui-secret-key
         key: secret-key
-  # Placeholder for OpenAI API (not used but required by chart when pipelines enabled)
   - name: OPENAI_API_KEY
     value: "sk-placeholder-not-used"
   # SSL CA bundle for Keycloak HTTPS (Entra ID federation)
+  # Volume mounted by post-deploy script (scripts/post-deploy-entra-id.sh)
   - name: SSL_CERT_FILE
     value: "/etc/ssl/keycloak/ca-certificates.crt"
   # OIDC Configuration
@@ -98,13 +81,8 @@ extraEnvVars:
     value: "openid email profile"
   - name: OPENID_REDIRECT_URI
     value: "https://chat.ai-platform.localhost/oauth/oidc/callback"
-# =============================================================================
-# Pipelines Configuration (LLM Guard + RAG)
-# Kyverno-compliant security settings
-# =============================================================================
 pipelines:
   enabled: true
-  # Container security context (Kyverno: disallow-privileged, require-non-root)
   containerSecurityContext:
     runAsUser: 1000
     runAsGroup: 1000
@@ -115,7 +93,6 @@ pipelines:
     capabilities:
       drop:
         - ALL
-  # Resource limits (Kyverno: require-resource-limits / OWASP LLM04)
   resources:
     requests:
       cpu: "100m"
@@ -123,7 +100,6 @@ pipelines:
     limits:
       cpu: "500m"
       memory: "512Mi"
-  # Persistence for pipelines
   persistence:
     enabled: true
     size: 1Gi
