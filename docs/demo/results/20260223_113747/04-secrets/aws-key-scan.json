@@ -1,0 +1,23 @@
+{
+    "is_valid": false,
+    "sanitized": "My AWS access key is ****** and secret is wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+    "risk_score": 1.0,
+    "scanners": [
+        {
+            "name": "PromptInjection",
+            "is_valid": false,
+            "risk_score": 1.0
+        },
+        {
+            "name": "Toxicity",
+            "is_valid": true,
+            "risk_score": -1.0
+        },
+        {
+            "name": "Secrets",
+            "is_valid": false,
+            "risk_score": 1.0
+        }
+    ],
+    "latency_ms": 722.754955291748
+}

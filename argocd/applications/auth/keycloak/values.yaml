@@ -67,3 +67,5 @@ extraEnv: |
     value: admin123
   - name: KC_HOSTNAME
     value: auth.ai-platform.localhost
+    name: KC_HOSTNAME_URL
+    value: https://auth.ai-platform.localhost

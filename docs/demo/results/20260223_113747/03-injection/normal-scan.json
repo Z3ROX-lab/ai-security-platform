@@ -1,0 +1,23 @@
+{
+    "is_valid": true,
+    "sanitized": "What are Kubernetes network policies?",
+    "risk_score": -1.0,
+    "scanners": [
+        {
+            "name": "PromptInjection",
+            "is_valid": true,
+            "risk_score": -1.0
+        },
+        {
+            "name": "Toxicity",
+            "is_valid": true,
+            "risk_score": -1.0
+        },
+        {
+            "name": "Secrets",
+            "is_valid": true,
+            "risk_score": -1.0
+        }
+    ],
+    "latency_ms": 457.5669765472412
+}
