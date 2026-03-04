@@ -65,8 +65,12 @@ resources:
 # Admin credentials
 extraEnv: |
   - name: KEYCLOAK_ADMIN
-    value: admin
+    valueFrom:
+      secretKeyRef:
+        name: keycloak-admin-secret
+        key: admin-user
   - name: KEYCLOAK_ADMIN_PASSWORD
-    value: admin123
-  - name: KC_HOSTNAME
-    value: auth.ai-platform.localhost
+    valueFrom:
+      secretKeyRef:
+        name: keycloak-admin-secret
+        key: admin-password
