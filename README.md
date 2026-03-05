@@ -111,7 +111,7 @@ kyverno-policies         Synced        Healthy
 | **ArgoCD** | https://argocd.ai-platform.localhost | admin / (see install) |
 | **Keycloak** | https://auth.ai-platform.localhost | admin / (from secret) |
 | **Open WebUI** | https://chat.ai-platform.localhost | via Keycloak SSO |
-| **Grafana** | https://grafana.ai-platform.localhost | admin / admin123! |
+| **Grafana** | https://grafana.ai-platform.localhost | admin / from secret |
 | **Prometheus** | https://prometheus.ai-platform.localhost | - |
 | **Alertmanager** | https://alertmanager.ai-platform.localhost | - |
 | **Qdrant Dashboard** | https://qdrant.ai-platform.localhost/dashboard | - |
