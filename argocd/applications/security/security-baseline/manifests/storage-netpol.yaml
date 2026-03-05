@@ -20,7 +20,7 @@ spec:
       ports:
         - protocol: TCP
           port: 5432
-    # Allow from future ai-apps namespace
+    # Allow from ai-apps namespace
     - from:
         - namespaceSelector:
             matchLabels:
@@ -28,7 +28,7 @@ spec:
       ports:
         - protocol: TCP
           port: 5432
-    # Allow from CNPG operator
+    # Allow from CNPG operator (including port 8000 for status checks)
     - from:
         - namespaceSelector:
             matchLabels:
@@ -39,7 +39,9 @@ spec:
         - protocol: TCP
           port: 8000
   egress:
-    # Allow DNS
+    # Allow DNS + Kubernetes API server (443)
+    # Note: ipBlock does not work with Flannel/K3s for ClusterIP (10.43.0.1)
+    # Must use namespaceSelector kube-system instead
     - to:
         - namespaceSelector:
             matchLabels:
@@ -47,6 +49,8 @@ spec:
       ports:
         - protocol: UDP
           port: 53
+        - protocol: TCP
+          port: 443
     # Allow replication between PostgreSQL pods
     - to:
         - podSelector:
@@ -55,11 +59,3 @@ spec:
       ports:
         - protocol: TCP
           port: 5432
-    # Allow CNPG to reach Kubernetes API server at startup
-    # Fix: pod was crashing after k3d restart (latent bug since NetworkPolicy creation)
-    - to:
-        - ipBlock:
-            cidr: 10.43.0.1/32
-      ports:
-        - protocol: TCP
-          port: 443
