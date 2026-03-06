@@ -104,3 +104,14 @@ pipelines:
     enabled: true
     size: 1Gi
     storageClass: local-path
+# Fix uploads directory permissions on every pod start
+# Required because the directory is created by root but the app runs as uid=1000
+initContainers:
+  - name: fix-permissions
+    image: busybox
+    command: ["sh", "-c", "mkdir -p /app/backend/data/uploads && chmod -R 777 /app/backend/data/uploads && echo 'Permissions fixed'"]
+    securityContext:
+      runAsUser: 0
+    volumeMounts:
+      - name: data
+        mountPath: /app/backend/data
