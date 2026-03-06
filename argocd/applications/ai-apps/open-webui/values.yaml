@@ -109,7 +109,7 @@ pipelines:
 initContainers:
   - name: fix-permissions
     image: busybox
-    command: ["sh", "-c", "mkdir -p /app/backend/data/uploads && chmod -R 777 /app/backend/data/uploads && echo 'Permissions fixed'"]
+    command: ["sh", "-c", "mkdir -p /app/backend/data/uploads && chmod -R 777 /app/backend/data/uploads /app/backend/data/vector_db /app/backend/data/cache && echo 'Permissions fixed'"]
     securityContext:
       runAsUser: 0
     volumeMounts:
